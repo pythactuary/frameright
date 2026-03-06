@@ -1,7 +1,7 @@
 from __future__ import annotations
 import pandas as pd
 from structframe import StructFrame, Field
-from structframe.typing import Col
+from structframe.typing import Col, Index
 from typing import Optional
 
 
@@ -35,7 +35,7 @@ class RiskProfile(StructFrame):
 
 df = pd.DataFrame(
     {
-        "limit": [1000000.0, -1],
+        "limit": [1000000.0, 0],
         "attachment": [500000.0, 1500000.0],
         "premium": [10000.0, 20000.0],
         "currency": ["USD", 1],
@@ -46,3 +46,23 @@ risk_profile = RiskProfile(df)
 underlying_attachment_plus_limit = risk_profile.attachment + risk_profile.limit
 country = risk_profile.country
 currency = risk_profile.currency
+
+
+class Orders(StructFrame):
+    item_ref: Index[str]
+    """Reference ID for the item"""
+    item_price: Col[float]
+    """The price per unit of the item"""
+    quantity_sold: Col[int]
+    """Number of units sold"""
+    revenue: Optional[Col[float]]
+
+
+df = pd.DataFrame({"item_price": [10.0, 20.0, 15.0], "quantity_sold": [100, 150, 200]})
+orders = Orders(df)
+orders.revenue = orders.item_price * orders.quantity_sold
+
+print(orders.sf_data)
+# Perfect IDE autocomplete, completely type-safe, beautiful syntax
+total_revenue = orders.revenue.sum()
+print(f"Total Revenue: {total_revenue}")

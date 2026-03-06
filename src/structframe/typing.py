@@ -5,7 +5,11 @@ T = TypeVar("T")
 
 if TYPE_CHECKING:
     Col: TypeAlias = pd.Series[T]
+    Index: TypeAlias = pd.Index[T]
 else:
 
     class Col(Generic[T]):
+        pass
+
+    class Index(Generic[T]):
         pass
