@@ -156,19 +156,19 @@ class TestDtypeValidation:
     def test_int_dtype_mismatch(self, valid_df):
         """Strings in an int column raises TypeMismatchError."""
         valid_df["user_id"] = ["1", "2", "3"]
-        with pytest.raises(TypeMismatchError, match="expected int"):
+        with pytest.raises(TypeMismatchError, match="dtype"):
             UserData(valid_df)
 
     def test_float_dtype_mismatch(self, valid_df):
         """Strings in a float column raises TypeMismatchError."""
         valid_df["engagement_score"] = ["85.5", "12.0", "99.9"]
-        with pytest.raises(TypeMismatchError, match="float"):
+        with pytest.raises(TypeMismatchError, match="dtype"):
             UserData(valid_df)
 
     def test_bool_dtype_mismatch(self, valid_df):
         """Strings in a bool column raises TypeMismatchError."""
         valid_df["is_active"] = ["yes", "no", "yes"]
-        with pytest.raises(TypeMismatchError, match="bool"):
+        with pytest.raises(TypeMismatchError, match="dtype"):
             UserData(valid_df)
 
     def test_str_dtype_accepts_object(self, valid_df):
@@ -187,37 +187,37 @@ class TestFieldConstraints:
     def test_ge_constraint(self, valid_df):
         """ge (>=) constraint rejects values below threshold."""
         valid_df.loc[0, "engagement_score"] = -1.0
-        with pytest.raises(ConstraintViolationError, match=">= 0.0"):
+        with pytest.raises(ConstraintViolationError, match="greater_than_or_equal_to"):
             UserData(valid_df)
 
     def test_le_constraint(self, valid_df):
         """le (<=) constraint rejects values above threshold."""
         valid_df.loc[0, "engagement_score"] = 150.0
-        with pytest.raises(ConstraintViolationError, match="<= 100.0"):
+        with pytest.raises(ConstraintViolationError, match="less_than_or_equal_to"):
             UserData(valid_df)
 
     def test_gt_constraint(self, strict_df):
         """gt (>) constraint rejects values at or below threshold."""
         strict_df.loc[0, "value"] = 0.0  # must be > 0
-        with pytest.raises(ConstraintViolationError, match="> 0"):
+        with pytest.raises(ConstraintViolationError, match="greater_than"):
             StrictSchema(strict_df)
 
     def test_lt_constraint(self, strict_df):
         """lt (<) constraint rejects values at or above threshold."""
         strict_df.loc[0, "value"] = 1000.0  # must be < 1000
-        with pytest.raises(ConstraintViolationError, match="< 1000"):
+        with pytest.raises(ConstraintViolationError, match="less_than"):
             StrictSchema(strict_df)
 
     def test_isin_constraint(self, valid_df):
         """isin constraint rejects values not in allowed list."""
         valid_df.loc[1, "SUBSCRIPTION_TIER"] = "SuperPro"
-        with pytest.raises(ConstraintViolationError, match="invalid values"):
+        with pytest.raises(ConstraintViolationError, match="isin"):
             UserData(valid_df)
 
     def test_regex_constraint(self, strict_df):
         """regex constraint rejects values not matching pattern."""
         strict_df.loc[0, "code"] = "abc"  # must be ^[A-Z]{3}$
-        with pytest.raises(ConstraintViolationError, match="pattern"):
+        with pytest.raises(ConstraintViolationError, match="str_matches"):
             StrictSchema(strict_df)
 
     def test_regex_constraint_valid(self, strict_df):
@@ -228,7 +228,7 @@ class TestFieldConstraints:
     def test_min_length_constraint(self, valid_df):
         """min_length constraint rejects values that are too short."""
         valid_df.loc[0, "username"] = ""  # min_length=1
-        with pytest.raises(ConstraintViolationError, match="shorter than"):
+        with pytest.raises(ConstraintViolationError, match="str_length"):
             UserData(valid_df)
 
     def test_nullable_false_constraint(self, strict_df):
@@ -240,13 +240,13 @@ class TestFieldConstraints:
     def test_unique_constraint(self, strict_df):
         """unique=True rejects duplicate values."""
         strict_df.loc[1, "id"] = strict_df.loc[0, "id"]  # duplicate
-        with pytest.raises(ConstraintViolationError, match="duplicate"):
+        with pytest.raises(ConstraintViolationError, match="field_uniqueness"):
             StrictSchema(strict_df)
 
     def test_optional_column_constraint_when_present(self, valid_df):
         """Constraints on optional columns still apply when the column exists."""
         valid_df.loc[0, "lifetime_value"] = -10.0
-        with pytest.raises(ConstraintViolationError, match=">= 0.0"):
+        with pytest.raises(ConstraintViolationError, match="greater_than_or_equal_to"):
             UserData(valid_df)
 
 
@@ -706,7 +706,7 @@ class TestMaxLengthConstraint:
     def test_max_length_rejects_long_values(self):
         """max_length rejects strings longer than threshold."""
         df = pd.DataFrame({"label": ["short", "toolongvalue"]})
-        with pytest.raises(ConstraintViolationError, match="longer than"):
+        with pytest.raises(ConstraintViolationError, match="str_length"):
             MaxLengthSchema(df)
 
     def test_max_length_accepts_valid(self):
@@ -835,13 +835,13 @@ class TestSchemaInheritance:
     def test_child_enforces_parent_constraints(self):
         """Parent-defined constraints still apply on child."""
         df = pd.DataFrame({"id": [1, 1], "name": ["a", "b"], "score": [5.0, 10.0]})
-        with pytest.raises(ConstraintViolationError, match="duplicate"):
+        with pytest.raises(ConstraintViolationError, match="field_uniqueness"):
             ChildSchema(df)
 
     def test_child_enforces_own_constraints(self):
         """Child-defined constraints also apply."""
         df = pd.DataFrame({"id": [1, 2], "name": ["a", "b"], "score": [-1.0, 10.0]})
-        with pytest.raises(ConstraintViolationError, match=">= 0"):
+        with pytest.raises(ConstraintViolationError, match="greater_than_or_equal_to"):
             ChildSchema(df)
 
 
@@ -1124,27 +1124,30 @@ class TestFactoryKwargs:
         obj = MinimalSchema.sf_from_records(records, validate=False)
         assert len(obj) == 1
 
+
 import pandas as pd
 import pytest
 from structframe import StructFrame, Field
 from structframe.typing import Col
 from structframe.exceptions import TypeMismatchError
 
+
 def test_integer_coercion_nullable():
     class IntSchema(StructFrame):
         count: Col[int] = Field(nullable=True)
 
     # DataFrame with strings that can be coerced, and a None
-    df = pd.DataFrame({"count": ["1", "2", None]}) 
-    
+    df = pd.DataFrame({"count": ["1", "2", None]})
+
     # This should coerce to Int64 [1, 2, <NA>]
     # Before the fix, errors='coerce' would produce float64 with NaNs [1.0, 2.0, NaN]
     # which is technically allowed as numeric, but Int64 is preferred for Col[int]
     obj = IntSchema.sf_coerce(df, errors="coerce")
-    
+
     assert str(obj.count.dtype) == "Int64"
     assert obj.count.iloc[0] == 1
     assert pd.isna(obj.count.iloc[2])
+
 
 def test_integer_coercion_with_floats_safe():
     class IntSchema(StructFrame):
@@ -1152,10 +1155,11 @@ def test_integer_coercion_with_floats_safe():
 
     # Integers represented as floats (e.g. from JSON)
     df = pd.DataFrame({"count": [1.0, 2.0]})
-    
+
     obj = IntSchema.sf_coerce(df)
     assert str(obj.count.dtype) == "Int64"
     assert obj.count.iloc[0] == 1
+
 
 def test_integer_coercion_with_floats_lossy():
     class IntSchema(StructFrame):
@@ -1163,14 +1167,15 @@ def test_integer_coercion_with_floats_lossy():
 
     # Real floats
     df = pd.DataFrame({"count": [1.5, 2.0]})
-    
+
     # sf_coerce -> to_numeric -> [1.5, 2.0] (float)
     # astype("Int64") -> TypeError (cannot safely cast) -> catch -> keep float
     # sf_validate -> checks is_integer_dtype(float) -> False -> Raises TypeMismatchError
-    
+
     # This ensures we don't silently truncate 1.5 to 1
     with pytest.raises(TypeMismatchError):
-         IntSchema.sf_coerce(df)
+        IntSchema.sf_coerce(df)
+
 
 def test_boolean_coercion_strings():
     class BoolSchema(StructFrame):
@@ -1178,33 +1183,34 @@ def test_boolean_coercion_strings():
 
     df = pd.DataFrame({"flag": ["True", "false", "YES", "no", "1", "0"]})
     obj = BoolSchema.sf_coerce(df)
-    
+
     expected = [True, False, True, False, True, False]
-    assert (obj.flag.tolist() == expected)
+    assert obj.flag.tolist() == expected
+
 
 def test_nullable_constraint_logic_detailed():
     """Verify fix for the critical bug + other constraints."""
+
     class ConstraintSchema(StructFrame):
         val: Col[float] = Field(ge=0, le=10, nullable=True)
         code: Col[str] = Field(min_length=3, nullable=True)
 
-    df = pd.DataFrame({
-        "val": [5.0, None, 1.0],
-        "code": ["ABC", None, "DEF"]
-    })
-    
+    df = pd.DataFrame({"val": [5.0, None, 1.0], "code": ["ABC", None, "DEF"]})
+
     # Should pass (NaNs skipped)
     obj = ConstraintSchema(df)
     assert len(obj) == 3
 
     # Fail case
-    df_fail = pd.DataFrame({
-        "val": [-1.0, None, 1.0], # -1.0 violates ge=0
-        "code": ["ABC", None, "DEF"]
-    })
-    
+    df_fail = pd.DataFrame(
+        {
+            "val": [-1.0, None, 1.0],  # -1.0 violates ge=0
+            "code": ["ABC", None, "DEF"],
+        }
+    )
+
     from structframe.exceptions import ConstraintViolationError
+
     with pytest.raises(ConstraintViolationError) as exc:
         ConstraintSchema(df_fail)
-    assert "must be >= 0" in str(exc.value)
-
+    assert "greater_than_or_equal_to" in str(exc.value)

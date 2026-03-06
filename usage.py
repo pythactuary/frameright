@@ -38,7 +38,7 @@ df = pd.DataFrame(
         "limit": [1000000.0, 0],
         "attachment": [500000.0, 1500000.0],
         "premium": [10000.0, 20000.0],
-        "currency": ["USD", 1],
+        "currency": ["USD", "GBP"],
     }
 )
 risk_profile = RiskProfile(df)

@@ -12,14 +12,8 @@ from typing import (
     get_type_hints,
 )
 
-import pandas as pd
-import pandas.api.types as ptypes
-
-from .exceptions import (
-    ConstraintViolationError,
-    MissingColumnError,
-    TypeMismatchError,
-)
+from .backends.base import BackendAdapter
+from .backends.registry import detect_backend, get_backend
 from .typing import Col, Index
 
 TStructFrame = TypeVar("TStructFrame", bound="StructFrame")
@@ -170,21 +164,29 @@ class StructFrame:
 
     def __init__(
         self,
-        df: pd.DataFrame,
+        df: Any,
         copy: bool = False,
         validate: bool = True,
         validate_types: bool = True,
+        backend: Optional[str] = None,
     ):
         """Initialise the StructFrame wrapper.
 
         Args:
-            df: The pandas DataFrame to wrap.
+            df: The DataFrame to wrap (pandas, polars, or other supported backend).
             copy: If True, copy the DataFrame. Defaults to False to save memory.
             validate: If True, run schema validation on construction. Defaults to True.
             validate_types: If True, also check runtime dtypes during validation.
                             Only used when ``validate`` is True.
+            backend: Explicitly specify backend name (e.g. 'pandas', 'polars').
+                     If None, auto-detect from the DataFrame type.
         """
-        self._sf_df = df.copy() if copy else df
+        if backend is not None:
+            self._sf_backend: BackendAdapter = get_backend(backend)
+        else:
+            self._sf_backend = detect_backend(df)
+
+        self._sf_df = self._sf_backend.copy(df) if copy else df
 
         if validate:
             self.sf_validate(check_types=validate_types)
@@ -262,12 +264,12 @@ class StructFrame:
             # 3. Inject the safe Property wrapper
             def make_property(col_name: str, optional_flag: bool):
                 def getter(self: "StructFrame") -> Any:
-                    if optional_flag and col_name not in self._sf_df.columns:
+                    if optional_flag and not self._sf_backend.has_column(self._sf_df, col_name):
                         return None
-                    return self._sf_df[col_name]
+                    return self._sf_backend.get_column(self._sf_df, col_name)
 
                 def setter(self: "StructFrame", value: Any) -> None:
-                    self._sf_df[col_name] = value
+                    self._sf_df = self._sf_backend.set_column(self._sf_df, col_name, value)
 
                 return property(getter, setter)
 
@@ -283,11 +285,11 @@ class StructFrame:
             entry = index_entries[0]
 
             def make_single_index_property() -> property:
-                def getter(self: "StructFrame") -> pd.Index:
-                    return self._sf_df.index
+                def getter(self: "StructFrame") -> Any:
+                    return self._sf_backend.get_index(self._sf_df)
 
                 def setter(self: "StructFrame", value: Any) -> None:
-                    self._sf_df.index = value
+                    self._sf_df = self._sf_backend.set_index(self._sf_df, value)
 
                 return property(getter, setter)
 
@@ -298,32 +300,17 @@ class StructFrame:
             for entry in index_entries:
 
                 def make_multi_index_property(level_name: str) -> property:
-                    def getter(self: "StructFrame") -> pd.Index:
-                        return self._sf_df.index.get_level_values(level_name)
+                    def getter(self: "StructFrame") -> Any:
+                        return self._sf_backend.get_index_level(self._sf_df, level_name)
 
                     def setter(self: "StructFrame", value: Any) -> None:
-                        idx = self._sf_df.index
-                        arrays = [
-                            value if idx.names[i] == level_name else idx.get_level_values(i)
-                            for i in range(idx.nlevels)
-                        ]
-                        self._sf_df.index = pd.MultiIndex.from_arrays(arrays, names=idx.names)
+                        self._sf_df = self._sf_backend.set_index_level(
+                            self._sf_df, level_name, value
+                        )
 
                     return property(getter, setter)
 
                 setattr(cls, entry["name"], make_multi_index_property(entry["name"]))
-
-    # ------------------------------------------------------------------
-    # Dtype check mapping (class-level constant, avoid rebuilding per call)
-    # ------------------------------------------------------------------
-    _SF_DTYPE_CHECKS = {
-        int: ptypes.is_integer_dtype,
-        float: ptypes.is_float_dtype,
-        str: lambda s: ptypes.is_string_dtype(s) or ptypes.is_object_dtype(s),
-        bool: ptypes.is_bool_dtype,
-        datetime: ptypes.is_datetime64_any_dtype,
-        date: ptypes.is_datetime64_any_dtype,
-    }
 
     # ------------------------------------------------------------------
     # Core Methods (Prefixed with sf_ to avoid namespace collisions)
@@ -331,6 +318,10 @@ class StructFrame:
 
     def sf_validate(self, check_types: bool = True) -> "StructFrame":
         """Validate column existence, runtime dtypes, and field-level constraints.
+
+        Uses Pandera for validation, with errors translated into StructFrame
+        exception types (MissingColumnError, TypeMismatchError,
+        ConstraintViolationError).
 
         Args:
             check_types: If True, also validate that column dtypes match the
@@ -344,158 +335,51 @@ class StructFrame:
             TypeMismatchError: If a column's dtype doesn't match the annotation.
             ConstraintViolationError: If a field-level constraint is violated.
         """
-        df = self._sf_df
-        actual_cols = set(df.columns)
-        missing: List[str] = []
-        cls_name = self.__class__.__name__
-        dtype_checks = self._SF_DTYPE_CHECKS
-
-        for attr_name, meta in self.__class__._sf_schema.items():
-            df_col: str = meta["df_col"]
-            inner_type = meta["inner_type"]
-
-            # 1. Check existence
-            if df_col not in actual_cols:
-                if not meta["is_optional"]:
-                    missing.append(df_col)
-                continue
-
-            series = df[df_col]
-            fi: FieldInfo = meta["field_info"]
-
-            # 2. Check Runtime Dtypes (inlined to avoid per-column method call)
-            if check_types and inner_type is not None:
-                checker = dtype_checks.get(inner_type)
-                if checker is not None and not checker(series):
-                    raise TypeMismatchError(
-                        f"[{cls_name}] Column '{df_col}' has dtype "
-                        f"'{series.dtype}', expected {inner_type.__name__}."
-                    )
-
-            # 3. Field-Level Constraint Validations (inlined for performance)
-            # Short-circuit: skip entirely if no constraints are set
-            if (
-                fi.nullable
-                and fi.ge is None
-                and fi.gt is None
-                and fi.le is None
-                and fi.lt is None
-                and fi.isin is None
-                and fi.regex is None
-                and fi.min_length is None
-                and fi.max_length is None
-                and not fi.unique
-            ):
-                continue
-
-            # Null check (use .hasnans for speed, run first since others may fail on NaN)
-            if not fi.nullable and series.hasnans:
-                null_count = int(series.isna().sum())
-                raise ConstraintViolationError(
-                    f"[{cls_name}] Column '{df_col}' contains {null_count} "
-                    f"null value(s) but nullable=False."
-                )
-
-            # Filter out NaNs for value checks if present
-            # If nullable=True, NaNs are allowed and shouldn't trigger constraint violations
-            check_series = series.dropna() if (fi.nullable and series.hasnans) else series
-
-            # Numeric constraints (vectorised, very fast)
-            if fi.ge is not None and not (check_series >= fi.ge).all():
-                raise ConstraintViolationError(f"[{cls_name}] Column '{df_col}' must be >= {fi.ge}")
-
-            if fi.gt is not None and not (check_series > fi.gt).all():
-                raise ConstraintViolationError(f"[{cls_name}] Column '{df_col}' must be > {fi.gt}")
-
-            if fi.le is not None and not (check_series <= fi.le).all():
-                raise ConstraintViolationError(f"[{cls_name}] Column '{df_col}' must be <= {fi.le}")
-
-            if fi.lt is not None and not (check_series < fi.lt).all():
-                raise ConstraintViolationError(f"[{cls_name}] Column '{df_col}' must be < {fi.lt}")
-
-            # Categorical constraint
-            if fi.isin is not None and not check_series.isin(fi.isin).all():
-                invalid = check_series[~check_series.isin(fi.isin)].unique()[:5]
-                raise ConstraintViolationError(
-                    f"[{cls_name}] Column '{df_col}' contains invalid values: "
-                    f"{invalid.tolist()}. Allowed: {fi.isin}"
-                )
-
-            # String constraints: combine to avoid redundant dropna/astype(str)
-            has_regex = fi.regex is not None
-            has_minlen = fi.min_length is not None
-            has_maxlen = fi.max_length is not None
-
-            if has_regex or has_minlen or has_maxlen:
-                str_series = series.str
-
-                if has_minlen or has_maxlen:
-                    # Use check_series (no NaNs) for length checks
-                    check_str_series = check_series.str
-                    lengths = check_str_series.len()
-
-                    if has_minlen and not (lengths >= fi.min_length).all():
-                        raise ConstraintViolationError(
-                            f"[{cls_name}] Column '{df_col}' has values shorter than "
-                            f"{fi.min_length} characters."
-                        )
-
-                    if has_maxlen and not (lengths <= fi.max_length).all():
-                        raise ConstraintViolationError(
-                            f"[{cls_name}] Column '{df_col}' has values longer than "
-                            f"{fi.max_length} characters."
-                        )
-
-                if has_regex:
-                    if not str_series.contains(fi.regex, na=True, regex=True).all():
-                        # Only compute failures for the error message
-                        bad = series[~str_series.contains(fi.regex, na=True, regex=True)]
-                        raise ConstraintViolationError(
-                            f"[{cls_name}] Column '{df_col}' has values not matching "
-                            f"pattern '{fi.regex}'. First failures: {bad.head(3).tolist()}"
-                        )
-
-            # Uniqueness constraint
-            if fi.unique and series.duplicated().any():
-                dup_count = int(series.duplicated().sum())
-                raise ConstraintViolationError(
-                    f"[{cls_name}] Column '{df_col}' has {dup_count} duplicate "
-                    f"value(s) but unique=True."
-                )
-
-        if missing:
-            raise MissingColumnError(f"[{cls_name}] Missing required columns: {sorted(missing)}")
-
+        schema = self._sf_backend.build_pandera_schema(
+            self.__class__._sf_schema,
+            check_types=check_types,
+        )
+        self._sf_backend.validate_with_pandera(self._sf_df, schema, lazy=True)
         return self
 
     @property
-    def sf_data(self) -> pd.DataFrame:
-        """Escape hatch to retrieve the raw Pandas DataFrame."""
+    def sf_data(self) -> Any:
+        """Escape hatch to retrieve the raw underlying DataFrame."""
         return self._sf_df
 
     @property
-    def sf_index(self) -> pd.Index:
+    def sf_index(self) -> Any:
         """Access the DataFrame index directly."""
-        return self._sf_df.index
+        return self._sf_backend.get_index(self._sf_df)
 
-    def sf_filter(self: TStructFrame, condition: pd.Series) -> TStructFrame:
+    @property
+    def sf_backend(self) -> BackendAdapter:
+        """Access the backend adapter."""
+        return self._sf_backend
+
+    def sf_filter(self: TStructFrame, condition: Any) -> TStructFrame:
         """Filter rows and return a new instance of the structured object.
 
         Args:
-            condition: A boolean Series mask to apply.
+            condition: A boolean mask (Series or Polars expression) to apply.
 
         Returns:
             A new instance of the same StructFrame subclass with filtered rows.
         """
-        return self.__class__(self._sf_df[condition], copy=False, validate=False)
+        filtered = self._sf_backend.filter_rows(self._sf_df, condition)
+        return self.__class__(filtered, copy=False, validate=False, backend=self._sf_backend.name)
 
     # ------------------------------------------------------------------
     # Schema Introspection
     # ------------------------------------------------------------------
 
     @classmethod
-    def sf_schema_info(cls) -> pd.DataFrame:
+    def sf_schema_info(cls, backend: str = "pandas") -> Any:
         """Return a DataFrame describing the schema definition.
+
+        Args:
+            backend: Which backend to use for the result DataFrame.
+                     Defaults to 'pandas'.
 
         Returns:
             A DataFrame with columns: attribute, column, type, required,
@@ -523,55 +407,75 @@ class StructFrame:
                     "description": fi.description,
                 }
             )
-        return pd.DataFrame(rows)
+        adapter = get_backend(backend)
+        return adapter.schema_info_to_dataframe(rows)
 
     # ------------------------------------------------------------------
     # Factory Methods
     # ------------------------------------------------------------------
 
     @classmethod
-    def sf_from_csv(cls: Type[TStructFrame], path: str, **kwargs: Any) -> TStructFrame:
+    def sf_from_csv(
+        cls: Type[TStructFrame],
+        path: str,
+        backend: str = "pandas",
+        **kwargs: Any,
+    ) -> TStructFrame:
         """Load a CSV file and wrap it in this StructFrame.
 
         Args:
             path: File path to the CSV.
-            **kwargs: Additional arguments passed to ``pd.read_csv``.
+            backend: Backend to use for reading ('pandas' or 'polars').
+            **kwargs: Additional arguments passed to the backend's CSV reader.
 
         Returns:
             A validated instance of this StructFrame subclass.
         """
-        df = pd.read_csv(path, **kwargs)
-        return cls(df)
+        adapter = get_backend(backend)
+        df = adapter.read_csv(path, **kwargs)
+        return cls(df, backend=backend)
 
     @classmethod
-    def sf_from_dict(cls: Type[TStructFrame], data: Dict[str, list], **kwargs: Any) -> TStructFrame:
+    def sf_from_dict(
+        cls: Type[TStructFrame],
+        data: Dict[str, list],
+        backend: str = "pandas",
+        **kwargs: Any,
+    ) -> TStructFrame:
         """Create from a dictionary of lists.
 
         Args:
             data: Dictionary mapping column names to lists of values.
+            backend: Backend to use ('pandas' or 'polars').
             **kwargs: Additional arguments passed to the constructor.
 
         Returns:
             A validated instance of this StructFrame subclass.
         """
-        df = pd.DataFrame(data)
-        return cls(df, **kwargs)
+        adapter = get_backend(backend)
+        df = adapter.from_dict(data)
+        return cls(df, backend=backend, **kwargs)
 
     @classmethod
     def sf_from_records(
-        cls: Type[TStructFrame], records: List[dict], **kwargs: Any
+        cls: Type[TStructFrame],
+        records: List[dict],
+        backend: str = "pandas",
+        **kwargs: Any,
     ) -> TStructFrame:
         """Create from a list of row dictionaries.
 
         Args:
             records: List of dictionaries, one per row.
+            backend: Backend to use ('pandas' or 'polars').
             **kwargs: Additional arguments passed to the constructor.
 
         Returns:
             A validated instance of this StructFrame subclass.
         """
-        df = pd.DataFrame.from_records(records)
-        return cls(df, **kwargs)
+        adapter = get_backend(backend)
+        df = adapter.from_records(records)
+        return cls(df, backend=backend, **kwargs)
 
     # ------------------------------------------------------------------
     # Type Coercion
@@ -580,8 +484,9 @@ class StructFrame:
     @classmethod
     def sf_coerce(
         cls: Type[TStructFrame],
-        df: pd.DataFrame,
+        df: Any,
         errors: str = "raise",
+        backend: Optional[str] = None,
     ) -> TStructFrame:
         """Attempt to convert DataFrame columns to match the schema's type annotations.
 
@@ -592,84 +497,44 @@ class StructFrame:
             df: The DataFrame to coerce.
             errors: How to handle conversion errors.
                     'raise' (default), 'coerce' (set failures to NaN), or 'ignore'.
+            backend: Explicitly specify backend name. If None, auto-detect.
 
         Returns:
             A new, validated StructFrame instance with converted dtypes.
         """
-        df = df.copy()
+        if backend is not None:
+            adapter = get_backend(backend)
+        else:
+            adapter = detect_backend(df)
+
+        df = adapter.copy(df)
         for attr_name, meta in cls._sf_schema.items():
             col = meta["df_col"]
             inner_type = meta["inner_type"]
-            if col not in df.columns or inner_type is None:
+            if not adapter.has_column(df, col) or inner_type is None:
                 continue
+            df = adapter.coerce_column(df, col, inner_type, errors=errors)
 
-            try:
-                if inner_type == int:
-                    df[col] = pd.to_numeric(df[col], errors=errors)
-                    # Use Int64 for nullable integers consistency
-                    try:
-                        df[col] = df[col].astype("Int64")
-                    except (TypeError, ValueError):
-                        # Keep as-is if strictly incompatible (e.g. floats)
-                        # The subsequent validate() will catch TypeMismatch if strictly required
-                        pass
-                elif inner_type == float:
-                    df[col] = pd.to_numeric(df[col], errors=errors)
-                elif inner_type == str:
-                    df[col] = df[col].astype(str)
-                elif inner_type == bool:
-                    # Safer boolean conversion for strings
-                    if ptypes.is_object_dtype(df[col]) or ptypes.is_string_dtype(df[col]):
-                        # Cast to object to allow replacing strings with booleans without error
-                        df[col] = df[col].astype(object)
-
-                        # Map known string values to booleans
-                        s_lower = df[col].astype(str).str.lower()
-                        mask_true = s_lower.isin(["true", "1", "yes", "on"])
-                        mask_false = s_lower.isin(["false", "0", "no", "off"])
-
-                        df.loc[mask_true, col] = True
-                        df.loc[mask_false, col] = False
-
-                    df[col] = df[col].astype(bool)
-                elif inner_type in (datetime, date):
-                    df[col] = pd.to_datetime(df[col], errors=errors)
-            except Exception as e:
-                if errors == "raise":
-                    raise TypeError(
-                        f"[{cls.__name__}] Cannot coerce column '{col}' "
-                        f"to {inner_type.__name__}: {e}"
-                    ) from e
-
-        return cls(df)
+        return cls(df, backend=adapter.name)
 
     @classmethod
-    def sf_example(cls: Type[TStructFrame], nrows: int = 3) -> TStructFrame:
+    def sf_example(
+        cls: Type[TStructFrame],
+        nrows: int = 3,
+        backend: str = "pandas",
+    ) -> TStructFrame:
         """Generate an example instance with dummy data for testing.
 
         Args:
             nrows: Number of rows to generate.
+            backend: Backend to use ('pandas' or 'polars').
 
         Returns:
             An instance populated with simple placeholder data.
         """
-        data: Dict[str, list] = {}
-        for attr_name, meta in cls._sf_schema.items():
-            col = meta["df_col"]
-            inner_type = meta["inner_type"]
-            if inner_type == int:
-                data[col] = list(range(nrows))
-            elif inner_type == float:
-                data[col] = [float(i) for i in range(nrows)]
-            elif inner_type == str:
-                data[col] = [f"{attr_name}_{i}" for i in range(nrows)]
-            elif inner_type == bool:
-                data[col] = [i % 2 == 0 for i in range(nrows)]
-            elif inner_type in (datetime, date):
-                data[col] = pd.date_range("2020-01-01", periods=nrows, freq="D").tolist()
-            else:
-                data[col] = [None] * nrows
-        return cls(pd.DataFrame(data))
+        adapter = get_backend(backend)
+        df = adapter.generate_example_data(cls._sf_schema, nrows=nrows)
+        return cls(df, backend=backend)
 
     # ------------------------------------------------------------------
     # Export Helpers
@@ -680,48 +545,51 @@ class StructFrame:
 
         Args:
             path: File path for the output CSV.
-            **kwargs: Additional arguments passed to ``DataFrame.to_csv``.
+            **kwargs: Additional arguments passed to the backend's CSV writer.
         """
-        self._sf_df.to_csv(path, index=False, **kwargs)
+        self._sf_backend.to_csv(self._sf_df, path, **kwargs)
 
     def sf_to_dict(self, orient: str = "records") -> Any:
         """Convert the wrapped DataFrame to a dictionary.
 
         Args:
-            orient: The format of the output dict (see ``DataFrame.to_dict``).
+            orient: The format of the output dict (see backend docs).
 
         Returns:
             A dictionary representation of the data.
         """
-        return self._sf_df.to_dict(orient=orient)
+        return self._sf_backend.to_dict(self._sf_df, orient=orient)
 
     # ------------------------------------------------------------------
     # Python Protocols
     # ------------------------------------------------------------------
 
     def __len__(self) -> int:
-        return len(self._sf_df)
+        return self._sf_backend.num_rows(self._sf_df)
 
     def __repr__(self) -> str:
         schema = self.__class__._sf_schema
         req = sum(1 for m in schema.values() if not m["is_optional"])
         opt = sum(1 for m in schema.values() if m["is_optional"])
+        head = self._sf_backend.head(self._sf_df)
         return (
-            f"<{self.__class__.__name__}: {len(self)} rows x "
-            f"{len(self._sf_df.columns)} cols ({req} required, {opt} optional)>\n"
-            f"{self._sf_df.head()}"
+            f"<{self.__class__.__name__} [{self._sf_backend.name}]: "
+            f"{len(self)} rows x "
+            f"{self._sf_backend.num_cols(self._sf_df)} cols "
+            f"({req} required, {opt} optional)>\n"
+            f"{head}"
         )
 
     def __iter__(self):
         """Iterate over rows as named tuples."""
-        return self._sf_df.itertuples(index=True, name=self.__class__.__name__ + "Row")
+        return self._sf_backend.itertuples(self._sf_df, self.__class__.__name__ + "Row")
 
     def __eq__(self, other: object) -> bool:
         """Check equality with another StructFrame of the same type."""
         if not isinstance(other, self.__class__):
             return NotImplemented
-        return self._sf_df.equals(other._sf_df)
+        return self._sf_backend.equals(self._sf_df, other._sf_df)
 
     def __contains__(self, col_name: str) -> bool:
         """Support ``'col_name' in obj`` syntax."""
-        return col_name in self._sf_df.columns
+        return self._sf_backend.has_column(self._sf_df, col_name)
