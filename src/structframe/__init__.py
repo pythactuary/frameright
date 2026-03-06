@@ -18,7 +18,7 @@ from .exceptions import (
 from .typing import Col, Index
 from .backends.registry import get_backend, detect_backend, register_backend
 
-__version__ = "0.2.0"
+__version__ = "0.3.0"
 __all__ = [
     "StructFrame",
     "Field",

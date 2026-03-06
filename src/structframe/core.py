@@ -1,3 +1,4 @@
+import sys
 from datetime import date, datetime
 from typing import (
     Any,
@@ -161,6 +162,7 @@ class StructFrame:
 
     # Stores the parsed schema for the specific child class
     _sf_schema: Dict[str, dict]
+    _sf_index_attrs: List[Dict[str, Any]]
 
     def __init__(
         self,
@@ -195,9 +197,15 @@ class StructFrame:
         """Metaclass hook to parse the schema and inject properties at load time."""
         super().__init_subclass__(**kwargs)
         cls._sf_schema = {}
-        cls._sf_index_attrs: List[Dict[str, Any]] = []  # Track Index[T] annotations
+        cls._sf_index_attrs = []  # Track Index[T] annotations
 
-        hints = get_type_hints(cls)
+        # Resolve type hints with Col/Index injected into the namespace so
+        # that ``from __future__ import annotations`` and TYPE_CHECKING-guarded
+        # imports both work without NameError at runtime.
+        module = sys.modules.get(cls.__module__)
+        globalns = dict(vars(module)) if module else {}
+        localns: Dict[str, Any] = {"Col": Col, "Index": Index}
+        hints = get_type_hints(cls, globalns=globalns, localns=localns)
         index_entries: List[Dict[str, Any]] = []
 
         for attr_name, attr_type in hints.items():
@@ -262,11 +270,11 @@ class StructFrame:
             }
 
             # 3. Inject the safe Property wrapper
-            def make_property(col_name: str, optional_flag: bool):
+            def make_property(col_name: str, optional_flag: bool) -> property:
                 def getter(self: "StructFrame") -> Any:
                     if optional_flag and not self._sf_backend.has_column(self._sf_df, col_name):
                         return None
-                    return self._sf_backend.get_column(self._sf_df, col_name)
+                    return self._sf_backend.get_column_ref(self._sf_df, col_name)
 
                 def setter(self: "StructFrame", value: Any) -> None:
                     self._sf_df = self._sf_backend.set_column(self._sf_df, col_name, value)
@@ -368,6 +376,25 @@ class StructFrame:
         """
         filtered = self._sf_backend.filter_rows(self._sf_df, condition)
         return self.__class__(filtered, copy=False, validate=False, backend=self._sf_backend.name)
+
+    # ------------------------------------------------------------------
+    # Materialisation
+    # ------------------------------------------------------------------
+
+    def sf_collect(self: TStructFrame) -> TStructFrame:
+        """Materialise a lazy backend (e.g. Polars LazyFrame → DataFrame).
+
+        For eager backends (Pandas, Polars DataFrame) this returns *self*
+        unchanged.  For Polars LazyFrames the query plan is executed and
+        a new StructFrame wrapping the collected DataFrame is returned.
+
+        Returns:
+            A StructFrame backed by an eager DataFrame.
+        """
+        collected = self._sf_backend.collect(self._sf_df)
+        if collected is self._sf_df:
+            return self
+        return self.__class__(collected, copy=False, validate=False, backend=self._sf_backend.name)
 
     # ------------------------------------------------------------------
     # Schema Introspection
@@ -580,7 +607,7 @@ class StructFrame:
             f"{head}"
         )
 
-    def __iter__(self):
+    def __iter__(self) -> Any:
         """Iterate over rows as named tuples."""
         return self._sf_backend.itertuples(self._sf_df, self.__class__.__name__ + "Row")
 

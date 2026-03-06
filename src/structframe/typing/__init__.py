@@ -6,8 +6,14 @@ At runtime ``Col`` is a lightweight generic sentinel used by
 ``__init_subclass__`` to detect annotated columns.
 """
 
+import sys
 import pandas as pd
-from typing import TypeVar, Generic, TYPE_CHECKING, TypeAlias
+from typing import TYPE_CHECKING, Any, Generic, TypeVar
+
+if sys.version_info >= (3, 10):
+    from typing import TypeAlias
+else:
+    from typing_extensions import TypeAlias
 
 T = TypeVar("T")
 
@@ -17,8 +23,8 @@ if TYPE_CHECKING:
     # When Polars DataFrames are used, the runtime adapter handles
     # the actual column types; the static hints remain pd.Series
     # because there is no Union-based way to overload at check time.
-    Col: TypeAlias = pd.Series[T]
-    Index: TypeAlias = pd.Index[T]
+    Col: TypeAlias = pd.Series[Any]
+    Index: TypeAlias = pd.Index[Any]
 else:
 
     class Col(Generic[T]):
@@ -30,3 +36,6 @@ else:
         """Runtime sentinel for index type annotations."""
 
         pass
+
+
+__all__ = ["Col", "Index"]

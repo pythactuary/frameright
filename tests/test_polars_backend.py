@@ -150,7 +150,7 @@ class TestPolarsDtypeValidation:
     def test_str_dtype_accepts_utf8(self, valid_df):
         """String columns accept Polars Utf8 type."""
         users = UserData(valid_df)
-        assert users.username[0] == "alice"
+        assert users.sf_data["username"][0] == "alice"
 
 
 # ===========================================================================
@@ -215,26 +215,42 @@ class TestPolarsFieldConstraints:
 
 
 class TestPolarsPropertyAccess:
-    def test_getter_returns_series(self, valid_df):
-        """Property getter returns a Polars Series."""
+    def test_getter_returns_expr(self, valid_df):
+        """Property getter returns a lazy pl.Expr (pl.col())."""
         users = UserData(valid_df)
-        assert isinstance(users.user_id, pl.Series)
+        assert isinstance(users.user_id, pl.Expr)
 
-    def test_getter_returns_correct_values(self, valid_df):
-        """Property getter returns correct data."""
+    def test_getter_expr_resolves_correctly(self, valid_df):
+        """Property getter expression resolves to correct data when selected."""
         users = UserData(valid_df)
-        assert users.user_id.to_list() == [1, 2, 3]
+        result = users.sf_data.select(users.user_id).to_series().to_list()
+        assert result == [1, 2, 3]
 
     def test_alias_mapping(self, valid_df):
-        """Aliased column maps correctly."""
+        """Aliased column maps correctly via expression."""
         users = UserData(valid_df)
-        assert users.tier.to_list() == ["Pro", "Free", "Enterprise"]
+        result = users.sf_data.select(users.tier).to_series().to_list()
+        assert result == ["Pro", "Free", "Enterprise"]
 
-    def test_setter(self, valid_df):
-        """Property setter updates the underlying DataFrame."""
+    def test_setter_with_series(self, valid_df):
+        """Property setter with Series updates the underlying DataFrame."""
         users = UserData(valid_df, validate=False)
         users.user_id = pl.Series("user_id", [10, 20, 30])
-        assert users.user_id.to_list() == [10, 20, 30]
+        result = users.sf_data.select(users.user_id).to_series().to_list()
+        assert result == [10, 20, 30]
+
+    def test_setter_with_expr(self, valid_df):
+        """Property setter with Expr updates the underlying DataFrame."""
+        users = UserData(valid_df, validate=False)
+        users.engagement_score = pl.col("engagement_score") * 2
+        result = users.sf_data["engagement_score"].to_list()
+        assert result == [171.0, 24.0, 199.8]
+
+    def test_setter_with_literal(self, valid_df):
+        """Property setter with a scalar literal."""
+        users = UserData(valid_df, validate=False)
+        users.is_active = True
+        assert users.sf_data["is_active"].to_list() == [True, True, True]
 
 
 # ===========================================================================
@@ -248,12 +264,18 @@ class TestPolarsCoreMethods:
         users = UserData(valid_df)
         assert isinstance(users.sf_data, pl.DataFrame)
 
-    def test_sf_filter(self, valid_df):
-        """sf_filter returns a new StructFrame with filtered rows."""
+    def test_sf_filter_with_expr(self, valid_df):
+        """sf_filter works with pl.Expr from property getter."""
         users = UserData(valid_df)
         active = users.sf_filter(users.is_active)
         assert len(active) == 2
         assert isinstance(active, UserData)
+
+    def test_sf_filter_with_comparison_expr(self, valid_df):
+        """sf_filter works with comparison expressions."""
+        users = UserData(valid_df)
+        high = users.sf_filter(users.engagement_score > 50.0)
+        assert len(high) == 2
 
     def test_sf_to_dict(self, valid_df):
         """sf_to_dict returns a list of dicts."""
@@ -329,7 +351,7 @@ class TestPolarsCoercion:
 
         df = pl.DataFrame({"flag": ["true", "false", "yes"]})
         obj = BoolSchema.sf_coerce(df, backend="polars")
-        assert obj.flag.to_list() == [True, False, True]
+        assert obj.sf_data["flag"].to_list() == [True, False, True]
 
 
 # ===========================================================================
@@ -461,3 +483,244 @@ class TestCrossBackendConsistency:
         pl_dict = pl_obj.sf_to_dict(orient="records")
 
         assert pd_dict == pl_dict
+
+
+# ===========================================================================
+# SECTION 13: LazyFrame Support
+# ===========================================================================
+
+
+class TestPolarsLazyFrame:
+    """Tests for Polars LazyFrame integration."""
+
+    @pytest.fixture
+    def lazy_df(self, valid_df):
+        """Convert the valid DataFrame to a LazyFrame."""
+        return valid_df.lazy()
+
+    def test_lazyframe_auto_detection(self):
+        """LazyFrame is auto-detected as polars backend."""
+        from structframe import detect_backend
+
+        lf = pl.LazyFrame({"col_a": [1, 2], "col_b": ["x", "y"]})
+        adapter = detect_backend(lf)
+        assert adapter.name == "polars"
+
+    def test_lazyframe_initialization(self, valid_df):
+        """StructFrame wraps a LazyFrame successfully."""
+        lf = valid_df.lazy()
+        users = UserData(lf)
+        assert len(users) == 3
+
+    def test_lazyframe_property_returns_expr(self, valid_df):
+        """Property getter on LazyFrame returns pl.Expr."""
+        lf = valid_df.lazy()
+        users = UserData(lf)
+        assert isinstance(users.user_id, pl.Expr)
+
+    def test_lazyframe_filter_with_expr(self, valid_df):
+        """sf_filter works on LazyFrame with expressions."""
+        lf = valid_df.lazy()
+        users = UserData(lf)
+        active = users.sf_filter(users.is_active)
+        assert isinstance(active.sf_data, pl.LazyFrame)
+        # Collect to verify
+        assert active.sf_data.collect().height == 2
+
+    def test_lazyframe_filter_with_comparison(self, valid_df):
+        """Comparison expressions work on LazyFrame filter."""
+        lf = valid_df.lazy()
+        users = UserData(lf)
+        high = users.sf_filter(users.engagement_score > 50.0)
+        assert high.sf_data.collect().height == 2
+
+    def test_lazyframe_setter_with_expr(self, valid_df):
+        """Setter with expression on LazyFrame."""
+        lf = valid_df.lazy()
+        users = UserData(lf, validate=False)
+        users.engagement_score = pl.col("engagement_score") * 2
+        result = users.sf_data.collect()["engagement_score"].to_list()
+        assert result == [171.0, 24.0, 199.8]
+
+    def test_lazyframe_setter_with_literal(self, valid_df):
+        """Setter with literal value on LazyFrame."""
+        lf = valid_df.lazy()
+        users = UserData(lf, validate=False)
+        users.is_active = True
+        result = users.sf_data.collect()["is_active"].to_list()
+        assert result == [True, True, True]
+
+    def test_lazyframe_to_dict(self, valid_df):
+        """to_dict collects LazyFrame before converting."""
+        lf = valid_df.lazy()
+        users = UserData(lf)
+        d = users.sf_to_dict(orient="records")
+        assert isinstance(d, list)
+        assert len(d) == 3
+
+    def test_lazyframe_to_csv(self, valid_df, tmp_path):
+        """to_csv collects LazyFrame before writing."""
+        lf = valid_df.lazy()
+        users = UserData(lf)
+        path = str(tmp_path / "lazy_test.csv")
+        users.sf_to_csv(path)
+        loaded = pl.read_csv(path)
+        assert loaded.height == 3
+
+    def test_lazyframe_copy_returns_lazyframe(self, valid_df):
+        """copy on LazyFrame returns the same LazyFrame (immutable)."""
+        lf = valid_df.lazy()
+        users = UserData(lf, copy=True)
+        assert isinstance(users.sf_data, pl.LazyFrame)
+
+    def test_lazyframe_head(self, valid_df):
+        """head collects LazyFrame to return DataFrame."""
+        lf = valid_df.lazy()
+        users = UserData(lf)
+        h = users.sf_backend.head(users.sf_data, 2)
+        assert isinstance(h, pl.DataFrame)
+        assert h.height == 2
+
+    def test_lazyframe_repr(self, valid_df):
+        """repr works with LazyFrame."""
+        lf = valid_df.lazy()
+        users = UserData(lf)
+        r = repr(users)
+        assert "UserData" in r
+        assert "polars" in r
+
+
+# ===========================================================================
+# SECTION 14: sf_collect() — LazyFrame materialisation
+# ===========================================================================
+
+
+class TestSfCollect:
+    """Tests for the sf_collect() materialisation escape hatch."""
+
+    def test_collect_lazyframe_returns_dataframe(self, valid_df):
+        """sf_collect() materialises a LazyFrame into an eager StructFrame."""
+        lf = valid_df.lazy()
+        users = UserData(lf)
+        assert isinstance(users.sf_data, pl.LazyFrame)
+
+        collected = users.sf_collect()
+        assert isinstance(collected, UserData)
+        assert isinstance(collected.sf_data, pl.DataFrame)
+        assert collected.sf_data.height == 3
+
+    def test_collect_eager_returns_self(self, valid_df):
+        """sf_collect() on an eager DataFrame returns self unchanged."""
+        users = UserData(valid_df)
+        same = users.sf_collect()
+        assert same is users  # identity — no copy needed
+
+    def test_collect_preserves_data(self, valid_df):
+        """Collected data matches the original."""
+        lf = valid_df.lazy()
+        lazy_users = UserData(lf)
+        eager_users = lazy_users.sf_collect()
+        assert eager_users.sf_data.to_dicts() == valid_df.to_dicts()
+
+    def test_collect_then_access_series(self, valid_df):
+        """After collect, get_column returns an actual pl.Series."""
+        lf = valid_df.lazy()
+        users = UserData(lf).sf_collect()
+        series = users.sf_backend.get_column(users.sf_data, "user_id")
+        assert isinstance(series, pl.Series)
+        assert series.to_list() == [1, 2, 3]
+
+    def test_collect_after_filter(self, valid_df):
+        """Collect works after a lazy filter."""
+        lf = valid_df.lazy()
+        users = UserData(lf)
+        active = users.sf_filter(users.is_active)
+        assert isinstance(active.sf_data, pl.LazyFrame)
+
+        collected = active.sf_collect()
+        assert isinstance(collected.sf_data, pl.DataFrame)
+        assert collected.sf_data.height == 2
+
+    def test_collect_pandas_noop(self):
+        """sf_collect() is a no-op for Pandas backend."""
+        import pandas as pd
+
+        df = pd.DataFrame({"col_a": [1, 2], "col_b": ["a", "b"]})
+        obj = MinimalSchema(df)
+        same = obj.sf_collect()
+        assert same is obj
+
+    @pytest.fixture
+    def valid_df(self):
+        return pl.DataFrame(
+            {
+                "user_id": [1, 2, 3],
+                "username": ["alice", "bob", "charlie"],
+                "is_active": [True, False, True],
+                "engagement_score": [85.5, 12.0, 99.9],
+                "SUBSCRIPTION_TIER": ["Pro", "Free", "Enterprise"],
+                "lifetime_value": [150.0, 0.0, 5000.0],
+            }
+        )
+
+
+# ===========================================================================
+# SECTION 15: Expression Chaining
+# ===========================================================================
+
+
+class TestExpressionChaining:
+    """Tests for pl.Expr-based property composition."""
+
+    def test_arithmetic_expression(self, valid_df):
+        """Arithmetic on property Exprs produces valid expressions."""
+        users = UserData(valid_df, validate=False)
+        expr = users.engagement_score * 2 + 1
+        assert isinstance(expr, pl.Expr)
+        result = valid_df.select(expr.alias("result")).to_series().to_list()
+        assert result == [172.0, 25.0, 200.8]
+
+    def test_comparison_expression(self, valid_df):
+        """Comparison on property Exprs produces filter-ready expressions."""
+        users = UserData(valid_df)
+        expr = users.engagement_score > 50.0
+        assert isinstance(expr, pl.Expr)
+        filtered = valid_df.filter(expr)
+        assert filtered.height == 2
+
+    def test_string_expression(self, valid_df):
+        """String methods on property Exprs work."""
+        users = UserData(valid_df)
+        expr = users.username.str.to_uppercase()
+        assert isinstance(expr, pl.Expr)
+        result = valid_df.select(expr.alias("upper")).to_series().to_list()
+        assert result == ["ALICE", "BOB", "CHARLIE"]
+
+    def test_with_columns_using_property(self, valid_df):
+        """df.with_columns() using property Exprs."""
+        users = UserData(valid_df, validate=False)
+        new_df = valid_df.with_columns(
+            (users.engagement_score / 100.0).alias("score_pct"),
+        )
+        assert "score_pct" in new_df.columns
+        assert new_df["score_pct"].to_list() == pytest.approx([0.855, 0.12, 0.999])
+
+    def test_select_multiple_properties(self, valid_df):
+        """Selecting multiple property Exprs."""
+        users = UserData(valid_df)
+        subset = valid_df.select(users.user_id, users.username)
+        assert subset.columns == ["user_id", "username"]
+        assert subset.height == 3
+
+    @pytest.fixture
+    def valid_df(self):
+        return pl.DataFrame(
+            {
+                "user_id": [1, 2, 3],
+                "username": ["alice", "bob", "charlie"],
+                "is_active": [True, False, True],
+                "engagement_score": [85.5, 12.0, 99.9],
+                "SUBSCRIPTION_TIER": ["Pro", "Free", "Enterprise"],
+                "lifetime_value": [150.0, 0.0, 5000.0],
+            }
+        )

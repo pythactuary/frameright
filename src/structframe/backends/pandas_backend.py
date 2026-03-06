@@ -45,9 +45,13 @@ class PandasBackend(BackendAdapter):
     # ------------------------------------------------------------------
 
     def copy(self, df: pd.DataFrame) -> pd.DataFrame:
-        return df.copy()
+        return df.copy()  # type: ignore[no-any-return]
 
     def get_column(self, df: pd.DataFrame, col: str) -> pd.Series:
+        return df[col]
+
+    def get_column_ref(self, df: pd.DataFrame, col: str) -> pd.Series:
+        # Pandas is eager — column ref is the materialised Series itself.
         return df[col]
 
     def set_column(self, df: pd.DataFrame, col: str, value: Any) -> pd.DataFrame:
@@ -97,14 +101,14 @@ class PandasBackend(BackendAdapter):
     # ------------------------------------------------------------------
 
     def filter_rows(self, df: pd.DataFrame, mask: Any) -> pd.DataFrame:
-        return df[mask]
+        return df[mask]  # type: ignore[no-any-return]
 
     # ------------------------------------------------------------------
     # Iteration / conversion
     # ------------------------------------------------------------------
 
     def head(self, df: pd.DataFrame, n: int = 5) -> pd.DataFrame:
-        return df.head(n)
+        return df.head(n)  # type: ignore[no-any-return]
 
     def itertuples(self, df: pd.DataFrame, name: str) -> Any:
         return df.itertuples(index=True, name=name)
@@ -113,7 +117,7 @@ class PandasBackend(BackendAdapter):
         return df1.equals(df2)
 
     def to_dict(self, df: pd.DataFrame, orient: str = "records") -> Any:
-        return df.to_dict(orient=orient)
+        return df.to_dict(orient=orient)  # type: ignore[call-overload]
 
     def to_csv(self, df: pd.DataFrame, path: str, **kwargs: Any) -> None:
         df.to_csv(path, index=False, **kwargs)
@@ -126,10 +130,10 @@ class PandasBackend(BackendAdapter):
         return pd.DataFrame(data)
 
     def from_records(self, records: List[dict]) -> pd.DataFrame:
-        return pd.DataFrame.from_records(records)
+        return pd.DataFrame.from_records(records)  # type: ignore[no-any-return]
 
     def read_csv(self, path: str, **kwargs: Any) -> pd.DataFrame:
-        return pd.read_csv(path, **kwargs)
+        return pd.read_csv(path, **kwargs)  # type: ignore[no-any-return]
 
     def empty_series(self, dtype: str) -> pd.Series:
         return pd.Series([], dtype=dtype)
@@ -203,12 +207,13 @@ class PandasBackend(BackendAdapter):
         lazy: bool = True,
     ) -> None:
         import pandera.pandas as pa
+        from pandera import errors
 
         try:
             pandera_schema.validate(df, lazy=lazy)
-        except pa.errors.SchemaErrors as exc:
+        except errors.SchemaErrors as exc:
             self._translate_pandera_errors(exc)
-        except pa.errors.SchemaError as exc:
+        except errors.SchemaError as exc:
             self._translate_single_pandera_error(exc)
 
     def _translate_pandera_errors(self, exc: Any) -> None:
@@ -319,3 +324,11 @@ class PandasBackend(BackendAdapter):
 
     def schema_info_to_dataframe(self, rows: List[dict]) -> pd.DataFrame:
         return pd.DataFrame(rows)
+
+    # ------------------------------------------------------------------
+    # Materialisation
+    # ------------------------------------------------------------------
+
+    def collect(self, df: pd.DataFrame) -> pd.DataFrame:
+        # Pandas is always eager.
+        return df

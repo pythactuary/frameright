@@ -69,7 +69,7 @@ def detect_backend(data: Any) -> BackendAdapter:
 
     raise TypeError(
         f"No StructFrame backend for type '{type(data).__name__}'. "
-        f"Supported: pandas.DataFrame, polars.DataFrame."
+        f"Supported: pandas.DataFrame, polars.DataFrame, polars.LazyFrame."
     )
 
 

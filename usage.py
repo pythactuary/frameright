@@ -1,4 +1,3 @@
-from __future__ import annotations
 import pandas as pd
 from structframe import StructFrame, Field
 from structframe.typing import Col, Index

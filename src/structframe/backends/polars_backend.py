@@ -66,32 +66,50 @@ class PolarsBackend(BackendAdapter):
     # DataFrame operations
     # ------------------------------------------------------------------
 
-    def copy(self, df: "pl.DataFrame") -> "pl.DataFrame":
+    def copy(self, df: "pl.DataFrame | pl.LazyFrame") -> "pl.DataFrame | pl.LazyFrame":
+        if isinstance(df, pl.LazyFrame):
+            return df  # LazyFrames are immutable query plans; no copy needed
         return df.clone()
 
     def get_column(self, df: "pl.DataFrame", col: str) -> "pl.Series":
+        if isinstance(df, pl.LazyFrame):
+            raise TypeError(
+                "Cannot materialise a column from a LazyFrame. "
+                "Use get_column_ref() to obtain a pl.col() expression instead."
+            )
         return df[col]
 
-    def set_column(self, df: "pl.DataFrame", col: str, value: Any) -> "pl.DataFrame":
-        if isinstance(value, pl.Series):
-            s = value.alias(col)
-        else:
-            s = pl.Series(col, value)
-        if col in df.columns:
-            return df.with_columns(s)
-        else:
-            return df.with_columns(s)
+    def get_column_ref(self, df: Any, col: str) -> "pl.Expr":
+        """Return a lazy ``pl.col()`` expression — preserves the query optimizer."""
+        return pl.col(col)
 
-    def has_column(self, df: "pl.DataFrame", col: str) -> bool:
+    def set_column(
+        self, df: "pl.DataFrame | pl.LazyFrame", col: str, value: Any
+    ) -> "pl.DataFrame | pl.LazyFrame":
+        if isinstance(value, pl.Expr):
+            new_col = value.alias(col)
+        elif isinstance(value, pl.Series):
+            new_col = value.alias(col)  # type: ignore[assignment]
+        else:
+            new_col = pl.lit(value).alias(col)
+        return df.with_columns(new_col)
+
+    def has_column(self, df: "pl.DataFrame | pl.LazyFrame", col: str) -> bool:
+        if isinstance(df, pl.LazyFrame):
+            return col in df.columns
         return col in df.columns
 
-    def column_names(self, df: "pl.DataFrame") -> List[str]:
+    def column_names(self, df: "pl.DataFrame | pl.LazyFrame") -> List[str]:
         return df.columns
 
-    def num_rows(self, df: "pl.DataFrame") -> int:
+    def num_rows(self, df: "pl.DataFrame | pl.LazyFrame") -> int:
+        if isinstance(df, pl.LazyFrame):
+            return df.collect().height
         return df.height
 
-    def num_cols(self, df: "pl.DataFrame") -> int:
+    def num_cols(self, df: "pl.DataFrame | pl.LazyFrame") -> int:
+        if isinstance(df, pl.LazyFrame):
+            return df.collect_schema().len()
         return df.width
 
     # ------------------------------------------------------------------
@@ -117,7 +135,7 @@ class PolarsBackend(BackendAdapter):
         raise KeyError(f"No column '{level_name}' found (Polars has no MultiIndex)")
 
     def set_index_level(self, df: "pl.DataFrame", level_name: str, value: Any) -> "pl.DataFrame":
-        return self.set_column(df, level_name, value)
+        return self.set_column(df, level_name, value)  # type: ignore[return-value]
 
     def index_nlevels(self, df: "pl.DataFrame") -> int:
         # Polars doesn't support multi-level indices
@@ -127,38 +145,54 @@ class PolarsBackend(BackendAdapter):
     # Filtering
     # ------------------------------------------------------------------
 
-    def filter_rows(self, df: "pl.DataFrame", mask: Any) -> "pl.DataFrame":
-        if isinstance(mask, pl.Series):
+    def filter_rows(
+        self, df: "pl.DataFrame | pl.LazyFrame", mask: Any
+    ) -> "pl.DataFrame | pl.LazyFrame":
+        if isinstance(mask, pl.Expr):
             return df.filter(mask)
-        # If it's a polars expression
+        if isinstance(mask, pl.Series):
+            if isinstance(df, pl.LazyFrame):
+                # Convert Series mask to expression for LazyFrame
+                return df.filter(pl.lit(mask))
+            return df.filter(mask)
         return df.filter(mask)
 
     # ------------------------------------------------------------------
     # Iteration / conversion
     # ------------------------------------------------------------------
 
-    def head(self, df: "pl.DataFrame", n: int = 5) -> "pl.DataFrame":
+    def head(self, df: "pl.DataFrame | pl.LazyFrame", n: int = 5) -> "pl.DataFrame":
+        # Always returns materialized DataFrame (collects LazyFrame if needed)
+        if isinstance(df, pl.LazyFrame):
+            return df.head(n).collect()
         return df.head(n)
 
-    def itertuples(self, df: "pl.DataFrame", name: str) -> Any:
+    def itertuples(self, df: "pl.DataFrame | pl.LazyFrame", name: str) -> Any:
         """Iterate over rows, yielding named tuples."""
-        RowClass = namedtuple(name, ["Index"] + df.columns)  # type: ignore[misc]
-        for i, row in enumerate(df.iter_rows(named=True)):
-            yield RowClass(Index=i, **row)
+        materialized = df.collect() if isinstance(df, pl.LazyFrame) else df
+        RowClass = namedtuple(name, ["Index"] + materialized.columns)  # type: ignore[misc]
+        for i, row in enumerate(materialized.iter_rows(named=True)):
+            yield RowClass(i, **row)  # type: ignore[call-arg]
 
-    def equals(self, df1: "pl.DataFrame", df2: "pl.DataFrame") -> bool:
-        return df1.equals(df2)
+    def equals(
+        self, df1: "pl.DataFrame | pl.LazyFrame", df2: "pl.DataFrame | pl.LazyFrame"
+    ) -> bool:
+        d1 = df1.collect() if isinstance(df1, pl.LazyFrame) else df1
+        d2 = df2.collect() if isinstance(df2, pl.LazyFrame) else df2
+        return d1.equals(d2)
 
-    def to_dict(self, df: "pl.DataFrame", orient: str = "records") -> Any:
+    def to_dict(self, df: "pl.DataFrame | pl.LazyFrame", orient: str = "records") -> Any:
+        materialized = df.collect() if isinstance(df, pl.LazyFrame) else df
         if orient == "records":
-            return df.to_dicts()
+            return materialized.to_dicts()
         elif orient == "dict" or orient == "list":
-            return {col: df[col].to_list() for col in df.columns}
+            return {col: materialized[col].to_list() for col in materialized.columns}
         else:
-            return df.to_dicts()
+            return materialized.to_dicts()
 
-    def to_csv(self, df: "pl.DataFrame", path: str, **kwargs: Any) -> None:
-        df.write_csv(path, **kwargs)
+    def to_csv(self, df: "pl.DataFrame | pl.LazyFrame", path: str, **kwargs: Any) -> None:
+        materialized = df.collect() if isinstance(df, pl.LazyFrame) else df
+        materialized.write_csv(path, **kwargs)
 
     # ------------------------------------------------------------------
     # Construction helpers
@@ -171,7 +205,7 @@ class PolarsBackend(BackendAdapter):
         return pl.DataFrame(records)
 
     def read_csv(self, path: str, **kwargs: Any) -> "pl.DataFrame":
-        return pl.read_csv(path, **kwargs)
+        return pl.read_csv(path, **kwargs)  # type: ignore[no-any-return]
 
     def empty_series(self, dtype: str) -> "pl.Series":
         # Map string dtypes to polars dtypes
@@ -250,14 +284,17 @@ class PolarsBackend(BackendAdapter):
 
     def validate_with_pandera(
         self,
-        df: "pl.DataFrame",
+        df: "pl.DataFrame | pl.LazyFrame",
         pandera_schema: Any,
         lazy: bool = True,
     ) -> None:
         import pandera.polars as pa
 
+        # Pandera requires a materialised DataFrame for validation
+        materialized = df.collect() if isinstance(df, pl.LazyFrame) else df
+
         try:
-            pandera_schema.validate(df, lazy=lazy)
+            pandera_schema.validate(materialized, lazy=lazy)
         except pa.errors.SchemaErrors as exc:
             self._translate_pandera_errors(exc)
         except pa.errors.SchemaError as exc:
@@ -388,3 +425,12 @@ class PolarsBackend(BackendAdapter):
 
     def schema_info_to_dataframe(self, rows: List[dict]) -> "pl.DataFrame":
         return pl.DataFrame(rows)
+
+    # ------------------------------------------------------------------
+    # Materialisation
+    # ------------------------------------------------------------------
+
+    def collect(self, df: "pl.DataFrame | pl.LazyFrame") -> "pl.DataFrame":
+        if isinstance(df, pl.LazyFrame):
+            return df.collect()
+        return df

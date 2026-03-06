@@ -38,6 +38,18 @@ class BackendAdapter(ABC):
         ...
 
     @abstractmethod
+    def get_column_ref(self, df: Any, col: str) -> Any:
+        """Return a *lazy* column reference for use in property getters.
+
+        For eager backends (Pandas) this is the same as ``get_column``
+        and returns the materialised ``pd.Series``.
+
+        For lazy-capable backends (Polars) this returns ``pl.col(col)``
+        — a lazy expression that preserves the query optimizer.
+        """
+        ...
+
+    @abstractmethod
     def set_column(self, df: Any, col: str, value: Any) -> Any:
         """Set/replace a column. Returns the (possibly new) DataFrame.
 
@@ -232,4 +244,18 @@ class BackendAdapter(ABC):
     @abstractmethod
     def schema_info_to_dataframe(self, rows: List[dict]) -> Any:
         """Convert a list of schema-info dicts into a backend-native DataFrame."""
+        ...
+
+    # ------------------------------------------------------------------
+    # Materialisation
+    # ------------------------------------------------------------------
+
+    @abstractmethod
+    def collect(self, df: Any) -> Any:
+        """Materialise a lazy frame into an eager one.
+
+        For eager backends (Pandas, Polars DataFrame) this should return
+        *df* unchanged.  For lazy backends (Polars LazyFrame) this should
+        call ``df.collect()``.
+        """
         ...
