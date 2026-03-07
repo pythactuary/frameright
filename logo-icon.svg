@@ -1,0 +1,54 @@
+<svg width="256" height="256" viewBox="0 0 256 256" xmlns="http://www.w3.org/2000/svg">
+  <!-- Icon version without text - perfect for favicon/small displays -->
+  
+  <!-- Background -->
+  <rect width="256" height="256" fill="#0A1929" rx="32"/>
+  
+  <!-- Gradients -->
+  <defs>
+    <linearGradient id="iconRing" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#009FDF;stop-opacity:1" />
+      <stop offset="50%" style="stop-color:#00D9FF;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#4DFFDF;stop-opacity:1" />
+    </linearGradient>
+    
+    <linearGradient id="iconFrame" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#FF6B9D;stop-opacity:0.9" />
+      <stop offset="100%" style="stop-color:#FFA07A;stop-opacity:0.9" />
+    </linearGradient>
+  </defs>
+  
+  <!-- Transformation ring -->
+  <circle cx="128" cy="128" r="100" fill="none" stroke="url(#iconRing)" stroke-width="2" opacity="0.5"/>
+  
+  <!-- Central DataFrame grid -->
+  <g transform="translate(58, 58)">
+    <!-- Grid background -->
+    <rect x="0" y="0" width="140" height="140" fill="#132F4C" rx="8"/>
+    
+    <!-- Grid structure -->
+    <line x1="0" y1="35" x2="140" y2="35" stroke="#00D9FF" stroke-width="2" opacity="0.6"/>
+    <line x1="0" y1="70" x2="140" y2="70" stroke="#00D9FF" stroke-width="2" opacity="0.6"/>
+    <line x1="0" y1="105" x2="140" y2="105" stroke="#00D9FF" stroke-width="2" opacity="0.6"/>
+    
+    <line x1="47" y1="0" x2="47" y2="140" stroke="#00D9FF" stroke-width="2" opacity="0.6"/>
+    <line x1="93" y1="0" x2="93" y2="140" stroke="#00D9FF" stroke-width="2" opacity="0.6"/>
+    
+    <!-- Highlighted cells -->
+    <rect x="5" y="5" width="37" height="25" fill="url(#iconFrame)" rx="3" opacity="0.8"/>
+    <rect x="52" y="40" width="36" height="25" fill="url(#iconFrame)" rx="3" opacity="0.6"/>
+    <rect x="98" y="75" width="37" height="25" fill="url(#iconFrame)" rx="3" opacity="0.7"/>
+    
+    <!-- Type dots -->
+    <circle cx="23" cy="17" r="3" fill="#FFFFFF" opacity="0.95"/>
+    <circle cx="70" cy="52" r="3" fill="#FFFFFF" opacity="0.95"/>
+    <circle cx="117" cy="87" r="3" fill="#FFFFFF" opacity="0.95"/>
+  </g>
+  
+  <!-- Outer border -->
+  <rect x="58" y="58" width="140" height="140" fill="none" stroke="url(#iconRing)" stroke-width="2.5" rx="8"/>
+  
+  <!-- Subtle P -->
+  <text x="180" y="180" font-family="Arial, sans-serif" font-size="45" font-weight="bold" 
+        fill="url(#iconRing)" opacity="0.3">P</text>
+</svg>

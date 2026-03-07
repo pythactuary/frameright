@@ -1,10 +1,16 @@
 # ProteusFrame
 
-[![Tests](https://github.com/yourusername/proteusframe/workflows/Tests/badge.svg)](https://github.com/yourusername/proteusframe/actions)
-[![Coverage](./coverage-badge.svg)](./coverage-badge.svg)
-[![PyPI version](https://badge.fury.io/py/proteusframe.svg)](https://badge.fury.io/py/proteusframe)
-[![Python Versions](https://img.shields.io/pypi/pyversions/proteusframe.svg)](https://pypi.org/project/proteusframe/)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+<p align="center">
+  <img src="logo-banner.svg" alt="ProteusFrame - Type-Safe, Multi-Backend DataFrames" width="100%">
+</p>
+
+<p align="center">
+  <a href="https://github.com/yourusername/proteusframe/actions"><img src="https://github.com/yourusername/proteusframe/workflows/Tests/badge.svg" alt="Tests"></a>
+  <a href="./coverage-badge.svg"><img src="./coverage-badge.svg" alt="Coverage"></a>
+  <a href="https://badge.fury.io/py/proteusframe"><img src="https://badge.fury.io/py/proteusframe.svg" alt="PyPI version"></a>
+  <a href="https://pypi.org/project/proteusframe/"><img src="https://img.shields.io/pypi/pyversions/proteusframe.svg" alt="Python Versions"></a>
+  <a href="https://opensource.org/licenses/MIT"><img src="https://img.shields.io/badge/License-MIT-yellow.svg" alt="License: MIT"></a>
+</p>
 
 **A lightweight Object-DataFrame Mapper (ODM) for Pandas and Polars.** Define your DataFrame schema as a Python class. Get full IDE autocomplete, catch column typos and type errors at edit-time with Pylance, Pyright, or mypy, validate data at runtime with production-grade Pandera validation, and write self-documenting data contracts — all while keeping native backend speed.
 
@@ -105,7 +111,7 @@ process(wrong_df)   # No error. It's just a DataFrame.
 # Rename a column? Good luck with find-and-replace across 50 files.
 ```
 
-| Capability                           | Standard Pandas     | ProteusFrame                                    |
+| Capability                           | Standard Pandas     | ProteusFrame                                   |
 | ------------------------------------ | ------------------- | ---------------------------------------------- |
 | Autocomplete on column names         | No                  | Yes                                            |
 | Errors on typos (before running)     | No                  | Yes — via Pylance/mypy                         |
@@ -225,7 +231,7 @@ Backend detection is automatic. The same schema works with both Pandas and Polar
 
 ## How It Compares
 
-|                                 | **ProteusFrame**                              | **Pandera**                                                              | **Pydantic v2**                  |
+|                                 | **ProteusFrame**                             | **Pandera**                                                              | **Pydantic v2**                  |
 | ------------------------------- | -------------------------------------------- | ------------------------------------------------------------------------ | -------------------------------- |
 | **Purpose**                     | Typed DataFrame access + validation          | DataFrame validation                                                     | Row-oriented data validation     |
 | **IDE autocomplete on columns** | Yes                                          | No — validator only, not an accessor                                     | N/A — no column concept          |
