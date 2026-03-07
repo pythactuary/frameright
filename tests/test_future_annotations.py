@@ -2,7 +2,7 @@
 
 This file MUST keep the future import as the first statement so that all
 annotations in this module are stringified at runtime.  The tests verify
-that StructFrame's ``__init_subclass__`` correctly resolves those strings
+that ProteusFrame's ``__init_subclass__`` correctly resolves those strings
 back to real types via namespace-injected ``get_type_hints``.
 """
 
@@ -12,9 +12,9 @@ import pytest
 import pandas as pd
 from typing import Optional
 
-from structframe import StructFrame, Field
-from structframe.typing import Col, Index
-from structframe.exceptions import ConstraintViolationError, MissingColumnError
+from proteusframe import ProteusFrame, Field
+from proteusframe.typing import Col, Index
+from proteusframe.exceptions import ConstraintViolationError, MissingColumnError
 
 
 # ---------------------------------------------------------------------------
@@ -22,18 +22,18 @@ from structframe.exceptions import ConstraintViolationError, MissingColumnError
 # ---------------------------------------------------------------------------
 
 
-class FutureSchema(StructFrame):
+class FutureSchema(ProteusFrame):
     x: Col[int]
     y: Optional[Col[str]]
     z: Col[float] = Field(ge=0)
 
 
-class FutureWithAlias(StructFrame):
+class FutureWithAlias(ProteusFrame):
     score: Col[float] = Field(alias="SCORE_COL", le=100)
     name: Col[str]
 
 
-class FutureWithIndex(StructFrame):
+class FutureWithIndex(ProteusFrame):
     idx: Index[int]
     value: Col[float]
 
@@ -47,22 +47,22 @@ class TestFutureAnnotationsSchemaResolution:
     """Verify that schema parsing works when annotations are strings."""
 
     def test_schema_attributes_detected(self):
-        assert "x" in FutureSchema._sf_schema
-        assert "y" in FutureSchema._sf_schema
-        assert "z" in FutureSchema._sf_schema
+        assert "x" in FutureSchema._pf_schema
+        assert "y" in FutureSchema._pf_schema
+        assert "z" in FutureSchema._pf_schema
 
     def test_inner_types_resolved(self):
-        assert FutureSchema._sf_schema["x"]["inner_type"] == int
-        assert FutureSchema._sf_schema["y"]["inner_type"] == str
-        assert FutureSchema._sf_schema["z"]["inner_type"] == float
+        assert FutureSchema._pf_schema["x"]["inner_type"] == int
+        assert FutureSchema._pf_schema["y"]["inner_type"] == str
+        assert FutureSchema._pf_schema["z"]["inner_type"] == float
 
     def test_optional_detected(self):
-        assert not FutureSchema._sf_schema["x"]["is_optional"]
-        assert FutureSchema._sf_schema["y"]["is_optional"]
-        assert not FutureSchema._sf_schema["z"]["is_optional"]
+        assert not FutureSchema._pf_schema["x"]["is_optional"]
+        assert FutureSchema._pf_schema["y"]["is_optional"]
+        assert not FutureSchema._pf_schema["z"]["is_optional"]
 
     def test_field_constraints_preserved(self):
-        fi = FutureSchema._sf_schema["z"]["field_info"]
+        fi = FutureSchema._pf_schema["z"]["field_info"]
         assert fi.ge == 0
 
 
@@ -100,8 +100,8 @@ class TestFutureAnnotationsIndex:
     """Verify Index[T] works with stringified annotations."""
 
     def test_index_detected(self):
-        assert len(FutureWithIndex._sf_index_attrs) == 1
-        assert FutureWithIndex._sf_index_attrs[0]["name"] == "idx"
+        assert len(FutureWithIndex._pf_index_attrs) == 1
+        assert FutureWithIndex._pf_index_attrs[0]["name"] == "idx"
 
     def test_construction_with_index(self):
         df = pd.DataFrame({"value": [1.0, 2.0, 3.0]})
@@ -118,7 +118,7 @@ class TestFutureAnnotationsPolars:
         df = pl.DataFrame({"x": [1, 2], "y": ["a", "b"], "z": [1.0, 2.0]})
         obj = FutureSchema(df)
         assert len(obj) == 2
-        assert obj.sf_backend.name == "polars"
+        assert obj.pf_backend.name == "polars"
 
     def test_polars_lazyframe(self):
         import polars as pl
@@ -150,11 +150,11 @@ def test_type_checking_guard_simulation():
     # Create a fake module with __future__ annotations semantics
     code = (
         "from __future__ import annotations\n"
-        "from structframe import StructFrame\n"
-        "from structframe.typing import Col\n"
+        "from proteusframe import ProteusFrame\n"
+        "from proteusframe.typing import Col\n"
         "from typing import Optional\n"
         "\n"
-        "class GuardedSchema(StructFrame):\n"
+        "class GuardedSchema(ProteusFrame):\n"
         "    a: Col[int]\n"
         "    b: Optional[Col[str]]\n"
     )
@@ -166,10 +166,10 @@ def test_type_checking_guard_simulation():
         exec(compile(code, fake_module.__name__, "exec"), fake_module.__dict__)
         GuardedSchema = fake_module.__dict__["GuardedSchema"]
 
-        assert "a" in GuardedSchema._sf_schema
-        assert "b" in GuardedSchema._sf_schema
-        assert GuardedSchema._sf_schema["a"]["inner_type"] == int
-        assert GuardedSchema._sf_schema["b"]["is_optional"] is True
+        assert "a" in GuardedSchema._pf_schema
+        assert "b" in GuardedSchema._pf_schema
+        assert GuardedSchema._pf_schema["a"]["inner_type"] == int
+        assert GuardedSchema._pf_schema["b"]["is_optional"] is True
 
         # Construct with real data
         df = pd.DataFrame({"a": [1, 2], "b": ["x", "y"]})

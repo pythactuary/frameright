@@ -6,7 +6,14 @@ Installation
 
 .. code-block:: bash
 
-    pip install structframe
+    # For Pandas backend (default)
+    pip install proteusframe
+
+    # For Polars backend (optional)
+    pip install proteusframe[polars]
+
+ProteusFrame automatically detects which backend you're using based on the DataFrame type.
+No configuration needed.
 
 
 Defining a Schema
@@ -16,12 +23,12 @@ Define your DataFrame schema as a Python class using ``Col[T]`` type hints:
 
 .. code-block:: python
 
-    from structframe import StructFrame, Field
-    from structframe.typing import Col
+    from proteusframe import ProteusFrame, Field
+    from proteusframe.typing import Col
     from typing import Optional
     import pandas as pd
 
-    class Customer(StructFrame):
+    class Customer(ProteusFrame):
         customer_id: Col[int] = Field(unique=True, nullable=False)
         """Unique customer identifier."""
         name: Col[str] = Field(min_length=1)
@@ -37,6 +44,8 @@ Define your DataFrame schema as a Python class using ``Col[T]`` type hints:
 Loading Data
 ------------
 
+**With Pandas:**
+
 .. code-block:: python
 
     # From a DataFrame
@@ -44,14 +53,30 @@ Loading Data
     customers = Customer(df)
 
     # From a CSV file
-    customers = Customer.sf_from_csv("customers.csv")
+    customers = Customer.pf_from_csv("customers.csv")
 
     # From a dictionary
-    customers = Customer.sf_from_dict({
+    customers = Customer.pf_from_dict({
         "customer_id": [1, 2],
         "name": ["Alice", "Bob"],
         ...
     })
+
+**With Polars:**
+
+.. code-block:: python
+
+    import polars as pl
+
+    # From a Polars DataFrame
+    df = pl.DataFrame({...})
+    customers = Customer(df)  # Automatically uses Polars backend
+
+    # From a CSV file
+    df = pl.read_csv("customers.csv")
+    customers = Customer(df)
+
+The same schema class works with both backends. Backend detection is automatic.
 
 
 Type-Safe Access
@@ -64,23 +89,39 @@ Type-Safe Access
     print(customers.age.mean())
 
     # Filter with type safety
-    young = customers.sf_filter(customers.age < 30)
+    young = customers.pf_filter(customers.age < 30)
 
 
-Validation
-----------
+Validation (Powered by Pandera)
+--------------------------------
 
-Validation runs automatically on construction. You can also run it manually:
+ProteusFrame uses **Pandera** for runtime validation, giving you production-tested constraint
+checking with helpful error messages.
+
+Validation runs automatically on construction:
 
 .. code-block:: python
 
-    customers.sf_validate()
+    customers = Customer(df)  # Validates schema and constraints
+
+You can also run validation manually:
+
+.. code-block:: python
+
+    customers.pf_validate()
 
 To skip validation (e.g. after filtering):
 
 .. code-block:: python
 
     customers = Customer(df, validate=False)
+
+**Benefits of Pandera integration:**
+
+* Industry-standard validation library with extensive testing
+* Clear, actionable error messages with row/column context
+* Works with both Pandas and Polars backends
+* Extensible — access the underlying Pandera schema for custom checks
 
 
 Type Coercion
@@ -91,7 +132,7 @@ When loading messy data (e.g. CSV where everything is a string):
 .. code-block:: python
 
     messy_df = pd.read_csv("data.csv")
-    customers = Customer.sf_coerce(messy_df)
+    customers = Customer.pf_coerce(messy_df)
 
 
 Schema Introspection
@@ -99,7 +140,7 @@ Schema Introspection
 
 .. code-block:: python
 
-    print(Customer.sf_schema_info())
-    #   attribute       column  type  required  nullable  unique  constraints  description
-    # 0 customer_id  customer_id   int      True     False    True         None  ...
+    for col in Customer.pf_schema_info():
+        print(col["attribute"], col["type"], col["required"])
+    # customer_id  int  True
     # ...

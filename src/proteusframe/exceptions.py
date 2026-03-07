@@ -1,19 +1,19 @@
-"""Custom exceptions for StructFrame."""
+"""Custom exceptions for ProteusFrame."""
 
 
-class StructFrameError(Exception):
-    """Base exception for all StructFrame errors."""
+class ProteusFrameError(Exception):
+    """Base exception for all ProteusFrame errors."""
 
     pass
 
 
-class SchemaError(StructFrameError):
+class SchemaError(ProteusFrameError):
     """Raised when a schema definition is invalid."""
 
     pass
 
 
-class ValidationError(StructFrameError):
+class ValidationError(ProteusFrameError):
     """Raised when DataFrame validation fails."""
 
     pass

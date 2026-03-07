@@ -1,4 +1,4 @@
-"""Generic column and index types for StructFrame.
+"""Generic column and index types for ProteusFrame.
 
 At type-check time (mypy, Pylance, PyCharm), ``Col[T]`` resolves to
 ``pd.Series[T]`` so that IDE autocomplete and static analysis work.

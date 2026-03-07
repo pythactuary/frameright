@@ -1,8 +1,8 @@
-"""Polars-specific column and index types for StructFrame.
+"""Polars-specific column and index types for ProteusFrame.
 
-Use these imports when your StructFrame subclass wraps a **Polars** DataFrame:
+Use these imports when your ProteusFrame subclass wraps a **Polars** DataFrame:
 
-    from structframe.typing.polars import Col, Index
+    from proteusframe.typing.polars import Col, Index
 
 At type-check time ``Col[T]`` resolves to a generic subclass of ``pl.Expr``
 so that:
@@ -13,12 +13,12 @@ so that:
   shows ``Col[float]``, not just ``pl.Expr``.
 
 At runtime ``Col`` is identical to the generic sentinel from
-``structframe.typing`` (used by ``__init_subclass__`` for schema parsing).
+``proteusframe.typing`` (used by ``__init_subclass__`` for schema parsing).
 """
 
 from typing import TYPE_CHECKING, Generic, TypeVar
 
-from structframe.typing import Col as _RuntimeCol, Index as _RuntimeIndex
+from proteusframe.typing import Col as _RuntimeCol, Index as _RuntimeIndex
 
 T = TypeVar("T")
 

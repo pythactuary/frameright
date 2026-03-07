@@ -1,4 +1,4 @@
-"""Polars backend adapter for StructFrame."""
+"""Polars backend adapter for ProteusFrame."""
 
 from __future__ import annotations
 
@@ -25,7 +25,7 @@ def _require_polars() -> None:
     if not _HAS_POLARS:
         raise ImportError(
             "Polars is required for the Polars backend. "
-            "Install it with: pip install structframe[polars]"
+            "Install it with: pip install proteusframe[polars]"
         )
 
 
@@ -224,7 +224,7 @@ class PolarsBackend(BackendAdapter):
 
     def build_pandera_schema(
         self,
-        sf_schema: Dict[str, dict],
+        pf_schema: Dict[str, dict],
         check_types: bool = True,
     ) -> Any:
         import pandera.polars as pa
@@ -233,7 +233,7 @@ class PolarsBackend(BackendAdapter):
 
         columns: Dict[str, pa.Column] = {}
 
-        for attr_name, meta in sf_schema.items():
+        for attr_name, meta in pf_schema.items():
             df_col: str = meta["df_col"]
             inner_type = meta["inner_type"]
             fi = meta["field_info"]
@@ -301,7 +301,7 @@ class PolarsBackend(BackendAdapter):
             self._translate_single_pandera_error(exc)
 
     def _translate_pandera_errors(self, exc: Any) -> None:
-        """Translate a Pandera SchemaErrors (lazy) into StructFrame exceptions."""
+        """Translate a Pandera SchemaErrors (lazy) into ProteusFrame exceptions."""
         fc = exc.failure_cases
 
         # Polars pandera returns a polars DataFrame for failure_cases
@@ -331,7 +331,7 @@ class PolarsBackend(BackendAdapter):
             self._translate_single_pandera_error(Exception(str(exc)))
 
     def _translate_single_pandera_error(self, exc: Any) -> None:
-        """Translate a single Pandera SchemaError into a StructFrame exception."""
+        """Translate a single Pandera SchemaError into a ProteusFrame exception."""
         msg = str(exc)
         if "not in dataframe" in msg or "column_in_dataframe" in msg:
             raise MissingColumnError(msg) from exc
@@ -350,6 +350,7 @@ class PolarsBackend(BackendAdapter):
         col: str,
         inner_type: Type,
         errors: str = "raise",
+        nullable: bool = True,
     ) -> "pl.DataFrame":
         self._ensure_dtype_map()
         target_dtype = self._POLARS_DTYPE_MAP.get(inner_type)
@@ -392,11 +393,11 @@ class PolarsBackend(BackendAdapter):
 
     def generate_example_data(
         self,
-        sf_schema: Dict[str, dict],
+        pf_schema: Dict[str, dict],
         nrows: int = 3,
     ) -> "pl.DataFrame":
         data: Dict[str, list] = {}
-        for attr_name, meta in sf_schema.items():
+        for attr_name, meta in pf_schema.items():
             col = meta["df_col"]
             inner_type = meta["inner_type"]
             if inner_type == int:

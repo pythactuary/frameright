@@ -1,8 +1,12 @@
+import ast
+import inspect
 import sys
 from datetime import date, datetime
 from typing import (
+    TYPE_CHECKING,
     Any,
     Dict,
+    Generic,
     List,
     Optional,
     Type,
@@ -13,11 +17,70 @@ from typing import (
     get_type_hints,
 )
 
+import pandas as pd  # Required dependency (via pandera)
+
+if TYPE_CHECKING:
+    import polars as pl
+
 from .backends.base import BackendAdapter
 from .backends.registry import detect_backend, get_backend
+from .exceptions import SchemaError
 from .typing import Col, Index
 
-TStructFrame = TypeVar("TStructFrame", bound="StructFrame")
+DFType = TypeVar("DFType", default=pd.DataFrame)
+TProteusFrame = TypeVar("TProteusFrame", bound="ProteusFrame")
+
+
+def _extract_docstrings(cls: Type) -> Dict[str, str]:
+    """Extract field docstrings from class source code using AST parsing.
+
+    Parses the class source to find string literals that immediately follow
+    annotated assignments, which Python treats as field docstrings.
+
+    Args:
+        cls: The class to extract docstrings from.
+
+    Returns:
+        A dictionary mapping attribute names to their docstrings.
+    """
+    try:
+        import textwrap
+
+        source = inspect.getsource(cls)
+        # Dedent to handle classes defined inside functions/methods
+        source = textwrap.dedent(source)
+        tree = ast.parse(source)
+        # Find the ClassDef node (should be the first statement)
+        classdef = None
+        for node in ast.walk(tree):
+            if isinstance(node, ast.ClassDef):
+                classdef = node
+                break
+
+        if classdef is None:
+            return {}
+
+        docstrings = {}
+        for i, node in enumerate(classdef.body):
+            # Look for annotated assignments (e.g., x: int = Field())
+            if isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name):
+                attr_name = node.target.id
+                # Check if next node is a string expression (docstring)
+                if i + 1 < len(classdef.body):
+                    next_node = classdef.body[i + 1]
+                    if isinstance(next_node, ast.Expr):
+                        # Python 3.8+ uses ast.Constant for string literals
+                        if isinstance(next_node.value, ast.Constant) and isinstance(
+                            next_node.value.value, str
+                        ):
+                            docstrings[attr_name] = next_node.value.value
+                        # Legacy Python (ast.Str)
+                        elif isinstance(next_node.value, ast.Str):
+                            docstrings[attr_name] = next_node.value.s
+        return docstrings
+    except (OSError, TypeError, IndentationError, SyntaxError):
+        # Can't get source (e.g., in REPL, dynamically created class, or parse error)
+        return {}
 
 
 class FieldInfo:
@@ -35,7 +98,6 @@ class FieldInfo:
         max_length: String value must be at most this long.
         nullable: Whether NaN/None values are allowed (default True).
         unique: Whether all values must be unique (default False).
-        description: Human-readable description for documentation.
     """
 
     def __init__(
@@ -51,7 +113,6 @@ class FieldInfo:
         max_length: Optional[int] = None,
         nullable: bool = True,
         unique: bool = False,
-        description: Optional[str] = None,
     ):
         self.alias = alias
         self.ge = ge
@@ -64,7 +125,6 @@ class FieldInfo:
         self.max_length = max_length
         self.nullable = nullable
         self.unique = unique
-        self.description = description
 
     def __repr__(self) -> str:
         parts = []
@@ -80,7 +140,6 @@ class FieldInfo:
             "max_length",
             "nullable",
             "unique",
-            "description",
         ]:
             val = getattr(self, attr)
             # Skip defaults
@@ -105,7 +164,6 @@ def Field(
     max_length: Optional[int] = None,
     nullable: bool = True,
     unique: bool = False,
-    description: Optional[str] = None,
 ) -> Any:
     """Helper function to define a field's properties and constraints.
 
@@ -121,10 +179,9 @@ def Field(
         max_length: String value must be at most this long.
         nullable: Whether NaN/None values are allowed (default True).
         unique: Whether all values must be unique (default False).
-        description: Human-readable description for documentation.
 
     Returns:
-        A FieldInfo metadata object consumed by StructFrame during class creation.
+        A FieldInfo metadata object consumed by ProteusFrame during class creation.
     """
     return FieldInfo(
         alias=alias,
@@ -138,31 +195,41 @@ def Field(
         max_length=max_length,
         nullable=nullable,
         unique=unique,
-        description=description,
     )
 
 
-class StructFrame:
+class ProteusFrame(Generic[DFType]):
     """Base class for the Object-DataFrame Mapper (ODM).
 
     Define your DataFrame schema as a Python class with typed attributes.
-    StructFrame validates column existence, runtime dtypes, and field-level
+    ProteusFrame validates column existence, runtime dtypes, and field-level
     constraints, while providing IDE-friendly autocomplete and type safety.
 
-    Example::
+    Type-parameterize for full IDE support on ``pf_data``::
 
-        class Orders(StructFrame):
+        class Orders(ProteusFrame[pd.DataFrame]):
             item_price: Col[float]
             quantity_sold: Col[int] = Field(ge=0)
             revenue: Optional[Col[float]]
 
         orders = Orders(df)
-        total = orders.item_price.sum()
+        orders.pf_data.groupby(...)  # Full pd.DataFrame autocomplete
+
+    The type parameter defaults to ``pd.DataFrame``, so omitting it
+    gives the same autocomplete::
+
+        class Orders(ProteusFrame):  # pf_data → pd.DataFrame
+            ...
+
+    For Polars, specify explicitly::
+
+        class Orders(ProteusFrame[pl.DataFrame]):  # pf_data → pl.DataFrame
+            ...
     """
 
     # Stores the parsed schema for the specific child class
-    _sf_schema: Dict[str, dict]
-    _sf_index_attrs: List[Dict[str, Any]]
+    _pf_schema: Dict[str, dict]
+    _pf_index_attrs: List[Dict[str, Any]]
 
     def __init__(
         self,
@@ -172,7 +239,7 @@ class StructFrame:
         validate_types: bool = True,
         backend: Optional[str] = None,
     ):
-        """Initialise the StructFrame wrapper.
+        """Initialise the ProteusFrame wrapper.
 
         Args:
             df: The DataFrame to wrap (pandas, polars, or other supported backend).
@@ -184,20 +251,23 @@ class StructFrame:
                      If None, auto-detect from the DataFrame type.
         """
         if backend is not None:
-            self._sf_backend: BackendAdapter = get_backend(backend)
+            self._pf_backend: BackendAdapter = get_backend(backend)
         else:
-            self._sf_backend = detect_backend(df)
+            self._pf_backend = detect_backend(df)
 
-        self._sf_df = self._sf_backend.copy(df) if copy else df
+        self._pf_df = self._pf_backend.copy(df) if copy else df
 
         if validate:
-            self.sf_validate(check_types=validate_types)
+            self.pf_validate(check_types=validate_types)
 
     def __init_subclass__(cls, **kwargs: Any) -> None:
         """Metaclass hook to parse the schema and inject properties at load time."""
         super().__init_subclass__(**kwargs)
-        cls._sf_schema = {}
-        cls._sf_index_attrs = []  # Track Index[T] annotations
+        cls._pf_schema = {}
+        cls._pf_index_attrs = []  # Track Index[T] annotations
+
+        # Extract docstrings from class source code
+        docstrings = _extract_docstrings(cls)
 
         # Resolve type hints with Col/Index injected into the namespace so
         # that ``from __future__ import annotations`` and TYPE_CHECKING-guarded
@@ -232,6 +302,13 @@ class StructFrame:
                 else attr_type
             )
 
+            # Validate that the annotation is Col[T] or Optional[Col[T]]
+            if get_origin(col_type) is not Col:
+                raise SchemaError(
+                    f"Attribute '{attr_name}' in {cls.__name__} must be annotated as "
+                    f"Col[T] or Optional[Col[T]], got {attr_type}"
+                )
+
             # Extract the inner primitive type (e.g., float from Col[float])
             inner_type = (
                 get_args(col_type)[0]
@@ -253,7 +330,7 @@ class StructFrame:
                 # Check parent classes for inherited FieldInfo
                 field_info = None
                 for base in cls.__mro__[1:]:
-                    base_schema = getattr(base, "_sf_schema", {})
+                    base_schema = getattr(base, "_pf_schema", {})
                     if attr_name in base_schema:
                         field_info = base_schema[attr_name]["field_info"]
                         break
@@ -262,22 +339,29 @@ class StructFrame:
                 actual_df_col = field_info.alias or attr_name
 
             # Store the parsed schema for validation later
-            cls._sf_schema[attr_name] = {
+            cls._pf_schema[attr_name] = {
                 "df_col": actual_df_col,
                 "inner_type": inner_type,
                 "field_info": field_info,
                 "is_optional": is_optional,
+                "docstring": docstrings.get(attr_name),
             }
 
             # 3. Inject the safe Property wrapper
             def make_property(col_name: str, optional_flag: bool) -> property:
-                def getter(self: "StructFrame") -> Any:
-                    if optional_flag and not self._sf_backend.has_column(self._sf_df, col_name):
+                def getter(self: "ProteusFrame") -> Any:
+                    if optional_flag and not self._pf_backend.has_column(self._pf_df, col_name):
                         return None
-                    return self._sf_backend.get_column_ref(self._sf_df, col_name)
+                    # For eager DataFrames: return Series (materialized data)
+                    # For LazyFrames: return Expr (lazy evaluation)
+                    try:
+                        return self._pf_backend.get_column(self._pf_df, col_name)
+                    except TypeError:
+                        # LazyFrame case - return expression instead
+                        return self._pf_backend.get_column_ref(self._pf_df, col_name)
 
-                def setter(self: "StructFrame", value: Any) -> None:
-                    self._sf_df = self._sf_backend.set_column(self._sf_df, col_name, value)
+                def setter(self: "ProteusFrame", value: Any) -> None:
+                    self._pf_df = self._pf_backend.set_column(self._pf_df, col_name, value)
 
                 return property(getter, setter)
 
@@ -286,18 +370,18 @@ class StructFrame:
         # ------------------------------------------------------------------
         # Inject Index properties (after all hints are collected)
         # ------------------------------------------------------------------
-        cls._sf_index_attrs = index_entries
+        cls._pf_index_attrs = index_entries
 
         if len(index_entries) == 1:
-            # Single Index — property directly wraps self._sf_df.index
+            # Single Index — property directly wraps self._pf_df.index
             entry = index_entries[0]
 
             def make_single_index_property() -> property:
-                def getter(self: "StructFrame") -> Any:
-                    return self._sf_backend.get_index(self._sf_df)
+                def getter(self: "ProteusFrame") -> Any:
+                    return self._pf_backend.get_index(self._pf_df)
 
-                def setter(self: "StructFrame", value: Any) -> None:
-                    self._sf_df = self._sf_backend.set_index(self._sf_df, value)
+                def setter(self: "ProteusFrame", value: Any) -> None:
+                    self._pf_df = self._pf_backend.set_index(self._pf_df, value)
 
                 return property(getter, setter)
 
@@ -308,12 +392,12 @@ class StructFrame:
             for entry in index_entries:
 
                 def make_multi_index_property(level_name: str) -> property:
-                    def getter(self: "StructFrame") -> Any:
-                        return self._sf_backend.get_index_level(self._sf_df, level_name)
+                    def getter(self: "ProteusFrame") -> Any:
+                        return self._pf_backend.get_index_level(self._pf_df, level_name)
 
-                    def setter(self: "StructFrame", value: Any) -> None:
-                        self._sf_df = self._sf_backend.set_index_level(
-                            self._sf_df, level_name, value
+                    def setter(self: "ProteusFrame", value: Any) -> None:
+                        self._pf_df = self._pf_backend.set_index_level(
+                            self._pf_df, level_name, value
                         )
 
                     return property(getter, setter)
@@ -321,13 +405,13 @@ class StructFrame:
                 setattr(cls, entry["name"], make_multi_index_property(entry["name"]))
 
     # ------------------------------------------------------------------
-    # Core Methods (Prefixed with sf_ to avoid namespace collisions)
+    # Core Methods (Prefixed with pf_ to avoid namespace collisions)
     # ------------------------------------------------------------------
 
-    def sf_validate(self, check_types: bool = True) -> "StructFrame":
+    def pf_validate(self, check_types: bool = True) -> "ProteusFrame":
         """Validate column existence, runtime dtypes, and field-level constraints.
 
-        Uses Pandera for validation, with errors translated into StructFrame
+        Uses Pandera for validation, with errors translated into ProteusFrame
         exception types (MissingColumnError, TypeMismatchError,
         ConstraintViolationError).
 
@@ -343,80 +427,94 @@ class StructFrame:
             TypeMismatchError: If a column's dtype doesn't match the annotation.
             ConstraintViolationError: If a field-level constraint is violated.
         """
-        schema = self._sf_backend.build_pandera_schema(
-            self.__class__._sf_schema,
+        schema = self._pf_backend.build_pandera_schema(
+            self.__class__._pf_schema,
             check_types=check_types,
         )
-        self._sf_backend.validate_with_pandera(self._sf_df, schema, lazy=True)
+        self._pf_backend.validate_with_pandera(self._pf_df, schema, lazy=True)
         return self
 
     @property
-    def sf_data(self) -> Any:
-        """Escape hatch to retrieve the raw underlying DataFrame."""
-        return self._sf_df
+    def pf_data(self) -> DFType:
+        """Escape hatch to retrieve the raw underlying DataFrame.
+
+        Returns:
+            The underlying DataFrame with full IDE autocomplete.
+            Defaults to ``pd.DataFrame`` when no type parameter is given.
+            Specify ``ProteusFrame[pl.DataFrame]`` for Polars autocomplete.
+
+        Example::
+
+            class Orders(ProteusFrame):
+                revenue: Col[float]
+
+            orders = Orders(df)
+            orders.pf_data.groupby(...)  # Full pd.DataFrame autocomplete
+        """
+        return self._pf_df
 
     @property
-    def sf_index(self) -> Any:
-        """Access the DataFrame index directly."""
-        return self._sf_backend.get_index(self._sf_df)
+    def pf_index(self) -> Any:
+        """Access the DataFrame index directly.
+
+        Returns:
+            The DataFrame index (type depends on backend: pandas Index/MultiIndex or list for Polars).
+        """
+        return self._pf_backend.get_index(self._pf_df)
 
     @property
-    def sf_backend(self) -> BackendAdapter:
+    def pf_backend(self) -> BackendAdapter:
         """Access the backend adapter."""
-        return self._sf_backend
+        return self._pf_backend
 
-    def sf_filter(self: TStructFrame, condition: Any) -> TStructFrame:
+    def pf_filter(self: TProteusFrame, condition: Any) -> TProteusFrame:
         """Filter rows and return a new instance of the structured object.
 
         Args:
             condition: A boolean mask (Series or Polars expression) to apply.
 
         Returns:
-            A new instance of the same StructFrame subclass with filtered rows.
+            A new instance of the same ProteusFrame subclass with filtered rows.
         """
-        filtered = self._sf_backend.filter_rows(self._sf_df, condition)
-        return self.__class__(filtered, copy=False, validate=False, backend=self._sf_backend.name)
+        filtered = self._pf_backend.filter_rows(self._pf_df, condition)
+        return self.__class__(filtered, copy=False, validate=False, backend=self._pf_backend.name)
 
     # ------------------------------------------------------------------
     # Materialisation
     # ------------------------------------------------------------------
 
-    def sf_collect(self: TStructFrame) -> TStructFrame:
+    def pf_collect(self: TProteusFrame) -> TProteusFrame:
         """Materialise a lazy backend (e.g. Polars LazyFrame → DataFrame).
 
         For eager backends (Pandas, Polars DataFrame) this returns *self*
         unchanged.  For Polars LazyFrames the query plan is executed and
-        a new StructFrame wrapping the collected DataFrame is returned.
+        a new ProteusFrame wrapping the collected DataFrame is returned.
 
         Returns:
-            A StructFrame backed by an eager DataFrame.
+            A ProteusFrame backed by an eager DataFrame.
         """
-        collected = self._sf_backend.collect(self._sf_df)
-        if collected is self._sf_df:
+        collected = self._pf_backend.collect(self._pf_df)
+        if collected is self._pf_df:
             return self
-        return self.__class__(collected, copy=False, validate=False, backend=self._sf_backend.name)
+        return self.__class__(collected, copy=False, validate=False, backend=self._pf_backend.name)
 
     # ------------------------------------------------------------------
     # Schema Introspection
     # ------------------------------------------------------------------
 
     @classmethod
-    def sf_schema_info(cls, backend: str = "pandas") -> Any:
-        """Return a DataFrame describing the schema definition.
-
-        Args:
-            backend: Which backend to use for the result DataFrame.
-                     Defaults to 'pandas'.
+    def pf_schema_info(cls) -> List[Dict[str, Any]]:
+        """Return the schema definition as a list of dictionaries.
 
         Returns:
-            A DataFrame with columns: attribute, column, type, required,
-            nullable, unique, constraints.
+            A list of dicts, one per column, with keys: attribute, column,
+            type, required, nullable, unique, constraints, description.
         """
-        rows = []
-        for attr_name, meta in cls._sf_schema.items():
+        rows: List[Dict[str, Any]] = []
+        for attr_name, meta in cls._pf_schema.items():
             fi: FieldInfo = meta["field_info"]
             inner = meta["inner_type"]
-            constraints = {}
+            constraints: Dict[str, Any] = {}
             for key in ["ge", "gt", "le", "lt", "isin", "regex", "min_length", "max_length"]:
                 val = getattr(fi, key, None)
                 if val is not None:
@@ -431,24 +529,23 @@ class StructFrame:
                     "nullable": fi.nullable,
                     "unique": fi.unique,
                     "constraints": constraints or None,
-                    "description": fi.description,
+                    "description": meta.get("docstring"),
                 }
             )
-        adapter = get_backend(backend)
-        return adapter.schema_info_to_dataframe(rows)
+        return rows
 
     # ------------------------------------------------------------------
     # Factory Methods
     # ------------------------------------------------------------------
 
     @classmethod
-    def sf_from_csv(
-        cls: Type[TStructFrame],
+    def pf_from_csv(
+        cls: Type[TProteusFrame],
         path: str,
         backend: str = "pandas",
         **kwargs: Any,
-    ) -> TStructFrame:
-        """Load a CSV file and wrap it in this StructFrame.
+    ) -> TProteusFrame:
+        """Load a CSV file and wrap it in this ProteusFrame.
 
         Args:
             path: File path to the CSV.
@@ -456,19 +553,19 @@ class StructFrame:
             **kwargs: Additional arguments passed to the backend's CSV reader.
 
         Returns:
-            A validated instance of this StructFrame subclass.
+            A validated instance of this ProteusFrame subclass.
         """
         adapter = get_backend(backend)
         df = adapter.read_csv(path, **kwargs)
         return cls(df, backend=backend)
 
     @classmethod
-    def sf_from_dict(
-        cls: Type[TStructFrame],
+    def pf_from_dict(
+        cls: Type[TProteusFrame],
         data: Dict[str, list],
         backend: str = "pandas",
         **kwargs: Any,
-    ) -> TStructFrame:
+    ) -> TProteusFrame:
         """Create from a dictionary of lists.
 
         Args:
@@ -477,19 +574,19 @@ class StructFrame:
             **kwargs: Additional arguments passed to the constructor.
 
         Returns:
-            A validated instance of this StructFrame subclass.
+            A validated instance of this ProteusFrame subclass.
         """
         adapter = get_backend(backend)
         df = adapter.from_dict(data)
         return cls(df, backend=backend, **kwargs)
 
     @classmethod
-    def sf_from_records(
-        cls: Type[TStructFrame],
+    def pf_from_records(
+        cls: Type[TProteusFrame],
         records: List[dict],
         backend: str = "pandas",
         **kwargs: Any,
-    ) -> TStructFrame:
+    ) -> TProteusFrame:
         """Create from a list of row dictionaries.
 
         Args:
@@ -498,7 +595,7 @@ class StructFrame:
             **kwargs: Additional arguments passed to the constructor.
 
         Returns:
-            A validated instance of this StructFrame subclass.
+            A validated instance of this ProteusFrame subclass.
         """
         adapter = get_backend(backend)
         df = adapter.from_records(records)
@@ -509,12 +606,12 @@ class StructFrame:
     # ------------------------------------------------------------------
 
     @classmethod
-    def sf_coerce(
-        cls: Type[TStructFrame],
+    def pf_coerce(
+        cls: Type[TProteusFrame],
         df: Any,
         errors: str = "raise",
         backend: Optional[str] = None,
-    ) -> TStructFrame:
+    ) -> TProteusFrame:
         """Attempt to convert DataFrame columns to match the schema's type annotations.
 
         This is useful when loading data from sources that don't preserve dtypes
@@ -527,7 +624,7 @@ class StructFrame:
             backend: Explicitly specify backend name. If None, auto-detect.
 
         Returns:
-            A new, validated StructFrame instance with converted dtypes.
+            A new, validated ProteusFrame instance with converted dtypes.
         """
         if backend is not None:
             adapter = get_backend(backend)
@@ -535,21 +632,24 @@ class StructFrame:
             adapter = detect_backend(df)
 
         df = adapter.copy(df)
-        for attr_name, meta in cls._sf_schema.items():
+        for attr_name, meta in cls._pf_schema.items():
             col = meta["df_col"]
             inner_type = meta["inner_type"]
+            field_info = meta["field_info"]
             if not adapter.has_column(df, col) or inner_type is None:
                 continue
-            df = adapter.coerce_column(df, col, inner_type, errors=errors)
+            df = adapter.coerce_column(
+                df, col, inner_type, errors=errors, nullable=field_info.nullable
+            )
 
         return cls(df, backend=adapter.name)
 
     @classmethod
-    def sf_example(
-        cls: Type[TStructFrame],
+    def pf_example(
+        cls: Type[TProteusFrame],
         nrows: int = 3,
         backend: str = "pandas",
-    ) -> TStructFrame:
+    ) -> TProteusFrame:
         """Generate an example instance with dummy data for testing.
 
         Args:
@@ -560,23 +660,23 @@ class StructFrame:
             An instance populated with simple placeholder data.
         """
         adapter = get_backend(backend)
-        df = adapter.generate_example_data(cls._sf_schema, nrows=nrows)
+        df = adapter.generate_example_data(cls._pf_schema, nrows=nrows)
         return cls(df, backend=backend)
 
     # ------------------------------------------------------------------
     # Export Helpers
     # ------------------------------------------------------------------
 
-    def sf_to_csv(self, path: str, **kwargs: Any) -> None:
+    def pf_to_csv(self, path: str, **kwargs: Any) -> None:
         """Save the wrapped DataFrame to a CSV file.
 
         Args:
             path: File path for the output CSV.
             **kwargs: Additional arguments passed to the backend's CSV writer.
         """
-        self._sf_backend.to_csv(self._sf_df, path, **kwargs)
+        self._pf_backend.to_csv(self._pf_df, path, **kwargs)
 
-    def sf_to_dict(self, orient: str = "records") -> Any:
+    def pf_to_dict(self, orient: str = "records") -> Any:
         """Convert the wrapped DataFrame to a dictionary.
 
         Args:
@@ -585,38 +685,47 @@ class StructFrame:
         Returns:
             A dictionary representation of the data.
         """
-        return self._sf_backend.to_dict(self._sf_df, orient=orient)
+        return self._pf_backend.to_dict(self._pf_df, orient=orient)
 
     # ------------------------------------------------------------------
     # Python Protocols
     # ------------------------------------------------------------------
 
     def __len__(self) -> int:
-        return self._sf_backend.num_rows(self._sf_df)
+        return self._pf_backend.num_rows(self._pf_df)
 
     def __repr__(self) -> str:
-        schema = self.__class__._sf_schema
+        schema = self.__class__._pf_schema
         req = sum(1 for m in schema.values() if not m["is_optional"])
         opt = sum(1 for m in schema.values() if m["is_optional"])
-        head = self._sf_backend.head(self._sf_df)
+        head = self._pf_backend.head(self._pf_df)
         return (
-            f"<{self.__class__.__name__} [{self._sf_backend.name}]: "
+            f"<{self.__class__.__name__} [{self._pf_backend.name}]: "
             f"{len(self)} rows x "
-            f"{self._sf_backend.num_cols(self._sf_df)} cols "
+            f"{self._pf_backend.num_cols(self._pf_df)} cols "
             f"({req} required, {opt} optional)>\n"
             f"{head}"
         )
 
     def __iter__(self) -> Any:
         """Iterate over rows as named tuples."""
-        return self._sf_backend.itertuples(self._sf_df, self.__class__.__name__ + "Row")
+        return self._pf_backend.itertuples(self._pf_df, self.__class__.__name__ + "Row")
 
     def __eq__(self, other: object) -> bool:
-        """Check equality with another StructFrame of the same type."""
+        """Check equality with another ProteusFrame of the same type."""
         if not isinstance(other, self.__class__):
             return NotImplemented
-        return self._sf_backend.equals(self._sf_df, other._sf_df)
+        return self._pf_backend.equals(self._pf_df, other._pf_df)
 
     def __contains__(self, col_name: str) -> bool:
-        """Support ``'col_name' in obj`` syntax."""
-        return self._sf_backend.has_column(self._sf_df, col_name)
+        """Support ``'col_name' in obj`` syntax.
+
+        Checks both Python attribute names and raw DataFrame column names.
+        This ensures that with aliases, both work: 'tier' in users and
+        'customer_tier' in users.
+        """
+        # Check if it's a Python attribute name in the schema
+        if col_name in self._pf_schema:
+            return True
+        # Fall back to checking raw DataFrame column name
+        return self._pf_backend.has_column(self._pf_df, col_name)

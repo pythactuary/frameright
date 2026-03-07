@@ -1,11 +1,11 @@
-"""Sphinx configuration for StructFrame documentation."""
+"""Sphinx configuration for ProteusFrame documentation."""
 
 import os
 import sys
 
 sys.path.insert(0, os.path.abspath("../../src"))
 
-project = "StructFrame"
+project = "ProteusFrame"
 copyright = "2026"
 author = "Your Name"
 release = "0.1.0"

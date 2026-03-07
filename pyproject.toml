@@ -3,7 +3,7 @@ requires = ["setuptools>=61.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "structframe"
+name = "proteusframe"
 version = "0.3.0"
 authors = [
   { name="Your Name", email="your.email@example.com" },
@@ -44,6 +44,7 @@ dev = [
     "pandas-stubs>=2.0.0",
     "ruff>=0.1.0",
     "pre-commit>=3.0",
+    "genbadge[coverage]>=1.1.0",
 ]
 docs = [
     "sphinx>=6.0",
@@ -52,10 +53,10 @@ docs = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/yourusername/structframe"
-Documentation = "https://structframe.readthedocs.io"
-Repository = "https://github.com/yourusername/structframe"
-"Bug Tracker" = "https://github.com/yourusername/structframe/issues"
+Homepage = "https://github.com/yourusername/proteusframe"
+Documentation = "https://proteusframe.readthedocs.io"
+Repository = "https://github.com/yourusername/proteusframe"
+"Bug Tracker" = "https://github.com/yourusername/proteusframe/issues"
 
 [tool.setuptools]
 package-dir = {"" = "src"}
@@ -64,7 +65,7 @@ package-dir = {"" = "src"}
 where = ["src"]
 
 [tool.setuptools.package-data]
-structframe = ["py.typed"]
+proteusframe = ["py.typed"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
@@ -72,6 +73,26 @@ python_files = ["test_*.py"]
 python_classes = ["Test*"]
 python_functions = ["test_*"]
 addopts = "--tb=short"
+
+[tool.coverage.run]
+source = ["src/proteusframe"]
+omit = [
+    "*/tests/*",
+    "*/__pycache__/*",
+]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "raise AssertionError",
+    "raise NotImplementedError",
+    "if __name__ == .__main__.:",
+    "if TYPE_CHECKING:",
+    "@abstractmethod",
+]
+show_missing = true
+precision = 2
 
 [tool.mypy]
 python_version = "3.9"
@@ -89,7 +110,7 @@ ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
 module = [
-    "structframe.backends.*",
+    "proteusframe.backends.*",
 ]
 # Backend implementations interact with external libraries (pandas, polars)
 # that have complex/incomplete type stubs. Allow some flexibility here.

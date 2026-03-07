@@ -4,14 +4,16 @@ Examples
 Insurance Risk Profile
 ----------------------
 
+**With Pandas:**
+
 .. code-block:: python
 
-    from structframe import StructFrame, Field
-    from structframe.typing import Col
+    from proteusframe import ProteusFrame, Field
+    from proteusframe.typing import Col
     from typing import Optional
     import pandas as pd
 
-    class RiskProfile(StructFrame):
+    class RiskProfile(ProteusFrame):
         """Schema for insurance risk data."""
         limit: Col[float] = Field(ge=0, description="Policy limit")
         attachment: Col[float] = Field(ge=0, description="Attachment point")
@@ -30,18 +32,39 @@ Insurance Risk Profile
     excess = risk.attachment + risk.limit
     print(f"Max exposure: {excess.sum():,.0f}")
 
+**With Polars (same schema, better performance):**
+
+.. code-block:: python
+
+    import polars as pl
+
+    # Same schema definition as above
+    df = pl.DataFrame({
+        "limit": [1_000_000.0, 500_000.0],
+        "attachment": [500_000.0, 250_000.0],
+        "premium": [10_000.0, 5_000.0],
+        "currency": ["USD", "EUR"],
+    })
+
+    risk = RiskProfile(df)  # Automatically uses Polars backend
+    excess = risk.attachment + risk.limit
+    print(f"Max exposure: {excess.sum():,.0f}")
+
+Polars offers significant performance improvements for large datasets, especially with lazy evaluation.
+The same schema works for both backends — just pass in the DataFrame type you prefer.
+
 
 Data Pipeline with Strict Contracts
 ------------------------------------
 
 .. code-block:: python
 
-    class RawOrders(StructFrame):
+    class RawOrders(ProteusFrame):
         order_id: Col[int] = Field(unique=True)
         item_price: Col[float] = Field(ge=0)
         quantity: Col[int] = Field(ge=1)
 
-    class ProcessedOrders(StructFrame):
+    class ProcessedOrders(ProteusFrame):
         order_id: Col[int] = Field(unique=True)
         item_price: Col[float] = Field(ge=0)
         quantity: Col[int] = Field(ge=1)
@@ -49,13 +72,13 @@ Data Pipeline with Strict Contracts
 
     def process_orders(raw: RawOrders) -> ProcessedOrders:
         \"\"\"Transform raw orders into processed orders with revenue.\"\"\"
-        df = raw.sf_data.copy()
+        df = raw.pf_data.copy()
         df["revenue"] = df["item_price"] * df["quantity"]
         return ProcessedOrders(df)
 
-    raw = RawOrders.sf_from_csv("orders.csv")
+    raw = RawOrders.pf_from_csv("orders.csv")
     processed = process_orders(raw)
-    processed.sf_to_csv("processed_orders.csv")
+    processed.pf_to_csv("processed_orders.csv")
 
 
 Column Aliasing
@@ -63,7 +86,7 @@ Column Aliasing
 
 .. code-block:: python
 
-    class LegacyData(StructFrame):
+    class LegacyData(ProteusFrame):
         \"\"\"Map clean Python names to messy column names.\"\"\"
         user_id: Col[int] = Field(alias="USER_ID_V2")
         signup_date: Col[str] = Field(alias="dt_signup_YYYYMMDD")

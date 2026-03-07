@@ -1,4 +1,4 @@
-"""Pandas backend adapter for StructFrame."""
+"""Pandas backend adapter for ProteusFrame."""
 
 from __future__ import annotations
 
@@ -144,14 +144,14 @@ class PandasBackend(BackendAdapter):
 
     def build_pandera_schema(
         self,
-        sf_schema: Dict[str, dict],
+        pf_schema: Dict[str, dict],
         check_types: bool = True,
     ) -> Any:
         import pandera.pandas as pa
 
         columns: Dict[str, pa.Column] = {}
 
-        for attr_name, meta in sf_schema.items():
+        for attr_name, meta in pf_schema.items():
             df_col: str = meta["df_col"]
             inner_type = meta["inner_type"]
             fi = meta["field_info"]
@@ -188,6 +188,9 @@ class PandasBackend(BackendAdapter):
             pa_dtype: Any = None
             if check_types and inner_type is not None:
                 pa_dtype = self._PANDERA_DTYPE_MAP.get(inner_type)
+                # Use nullable boolean dtype when column is nullable
+                if inner_type == bool and fi.nullable:
+                    pa_dtype = "boolean"
 
             columns[df_col] = pa.Column(
                 dtype=pa_dtype,
@@ -217,7 +220,7 @@ class PandasBackend(BackendAdapter):
             self._translate_single_pandera_error(exc)
 
     def _translate_pandera_errors(self, exc: Any) -> None:
-        """Translate a Pandera SchemaErrors (lazy) into StructFrame exceptions."""
+        """Translate a Pandera SchemaErrors (lazy) into ProteusFrame exceptions."""
         fc = exc.failure_cases
 
         # Check for missing columns first
@@ -242,7 +245,7 @@ class PandasBackend(BackendAdapter):
             raise ConstraintViolationError(f"Column '{col}' failed check: {check}") from exc
 
     def _translate_single_pandera_error(self, exc: Any) -> None:
-        """Translate a single Pandera SchemaError into a StructFrame exception."""
+        """Translate a single Pandera SchemaError into a ProteusFrame exception."""
         msg = str(exc)
         if "not in dataframe" in msg or "column_in_dataframe" in msg:
             raise MissingColumnError(msg) from exc
@@ -261,6 +264,7 @@ class PandasBackend(BackendAdapter):
         col: str,
         inner_type: Type,
         errors: str = "raise",
+        nullable: bool = True,
     ) -> pd.DataFrame:
         try:
             if inner_type == int:
@@ -275,13 +279,41 @@ class PandasBackend(BackendAdapter):
                 df[col] = df[col].astype(str)
             elif inner_type == bool:
                 if ptypes.is_object_dtype(df[col]) or ptypes.is_string_dtype(df[col]):
+                    original_col = df[col].copy()
                     df[col] = df[col].astype(object)
                     s_lower = df[col].astype(str).str.lower()
                     mask_true = s_lower.isin(["true", "1", "yes", "on"])
                     mask_false = s_lower.isin(["false", "0", "no", "off"])
+                    mask_na = pd.isna(original_col)
+                    mask_unknown = ~(mask_true | mask_false | mask_na)
+
+                    if mask_unknown.any():
+                        if errors == "raise":
+                            bad_values = original_col.loc[mask_unknown].unique()[:5]
+                            raise ValueError(
+                                f"Column '{col}' contains values that cannot be converted to bool: {list(bad_values)}"
+                            )
+                        elif errors == "coerce":
+                            # Set unknown values to NA
+                            df.loc[mask_unknown, col] = pd.NA
+                            mask_na = mask_na | mask_unknown
+                        # For errors="ignore", leave original values untouched and don't convert
+                        else:
+                            df[col] = original_col
+                            return df
+
                     df.loc[mask_true, col] = True
                     df.loc[mask_false, col] = False
-                df[col] = df[col].astype(bool)
+
+                    # Use nullable boolean dtype if column is marked as nullable
+                    # (even if no NA values are present, to match schema expectations)
+                    if nullable:
+                        df[col] = df[col].astype("boolean")
+                    else:
+                        df[col] = df[col].astype(bool)
+                else:
+                    # Already numeric, just convert to bool
+                    df[col] = df[col].astype(bool)
             elif inner_type in (datetime, date):
                 df[col] = pd.to_datetime(df[col], errors=errors)
         except Exception as e:
@@ -297,11 +329,11 @@ class PandasBackend(BackendAdapter):
 
     def generate_example_data(
         self,
-        sf_schema: Dict[str, dict],
+        pf_schema: Dict[str, dict],
         nrows: int = 3,
     ) -> pd.DataFrame:
         data: Dict[str, list] = {}
-        for attr_name, meta in sf_schema.items():
+        for attr_name, meta in pf_schema.items():
             col = meta["df_col"]
             inner_type = meta["inner_type"]
             if inner_type == int:

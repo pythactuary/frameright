@@ -9,7 +9,7 @@ from typing import Any, Dict, List, Optional, Type
 class BackendAdapter(ABC):
     """Abstract interface that every DataFrame backend must implement.
 
-    StructFrame delegates all backend-specific operations (column access,
+    ProteusFrame delegates all backend-specific operations (column access,
     dtype inspection, validation, coercion, etc.) to a concrete adapter.
     """
 
@@ -176,13 +176,13 @@ class BackendAdapter(ABC):
     @abstractmethod
     def build_pandera_schema(
         self,
-        sf_schema: Dict[str, dict],
+        pf_schema: Dict[str, dict],
         check_types: bool = True,
     ) -> Any:
-        """Build a Pandera DataFrameSchema from the parsed StructFrame schema.
+        """Build a Pandera DataFrameSchema from the parsed ProteusFrame schema.
 
         Args:
-            sf_schema: The ``_sf_schema`` dict from a StructFrame subclass.
+            pf_schema: The ``_pf_schema`` dict from a ProteusFrame subclass.
             check_types: Whether to include dtype checks.
 
         Returns:
@@ -197,7 +197,7 @@ class BackendAdapter(ABC):
         pandera_schema: Any,
         lazy: bool = True,
     ) -> None:
-        """Run Pandera validation and translate errors into StructFrame exceptions.
+        """Run Pandera validation and translate errors into ProteusFrame exceptions.
 
         Args:
             df: The DataFrame to validate.
@@ -220,6 +220,7 @@ class BackendAdapter(ABC):
         col: str,
         inner_type: Type,
         errors: str = "raise",
+        nullable: bool = True,
     ) -> Any:
         """Coerce a single column to match *inner_type*. Returns the (possibly new) DataFrame."""
         ...
@@ -231,7 +232,7 @@ class BackendAdapter(ABC):
     @abstractmethod
     def generate_example_data(
         self,
-        sf_schema: Dict[str, dict],
+        pf_schema: Dict[str, dict],
         nrows: int = 3,
     ) -> Any:
         """Generate a DataFrame with dummy data matching the schema."""

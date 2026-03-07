@@ -4,7 +4,7 @@ API Reference
 Core
 ----
 
-.. automodule:: structframe.core
+.. automodule:: proteusframe.core
    :members:
    :undoc-members:
    :show-inheritance:
@@ -13,7 +13,7 @@ Core
 Typing
 ------
 
-.. automodule:: structframe.typing
+.. automodule:: proteusframe.typing
    :members:
    :undoc-members:
 
@@ -21,7 +21,7 @@ Typing
 Exceptions
 ----------
 
-.. automodule:: structframe.exceptions
+.. automodule:: proteusframe.exceptions
    :members:
    :undoc-members:
    :show-inheritance:

@@ -11,8 +11,8 @@ _BACKENDS: Dict[str, BackendAdapter] = {}
 
 # Type string → backend module import path
 _BACKEND_REGISTRY: Dict[str, str] = {
-    "pandas": "structframe.backends.pandas_backend",
-    "polars": "structframe.backends.polars_backend",
+    "pandas": "proteusframe.backends.pandas_backend",
+    "polars": "proteusframe.backends.polars_backend",
 }
 
 
@@ -68,7 +68,7 @@ def detect_backend(data: Any) -> BackendAdapter:
         raise TypeError("cuDF backend is not yet implemented. Contributions welcome!")
 
     raise TypeError(
-        f"No StructFrame backend for type '{type(data).__name__}'. "
+        f"No ProteusFrame backend for type '{type(data).__name__}'. "
         f"Supported: pandas.DataFrame, polars.DataFrame, polars.LazyFrame."
     )
 
@@ -92,7 +92,7 @@ def register_backend(name: str, module_path: str) -> None:
     """Register a custom backend adapter.
 
     This allows third-party libraries (e.g. cuDF) to register their
-    backends without modifying StructFrame's source.
+    backends without modifying ProteusFrame's source.
 
     Args:
         name: Short name for the backend (e.g. 'cudf').

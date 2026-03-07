@@ -1,7 +1,7 @@
-"""Backend adapters for StructFrame.
+"""Backend adapters for ProteusFrame.
 
 Each backend provides a consistent interface for DataFrame operations,
-allowing StructFrame to work with Pandas, Polars, and other libraries.
+allowing ProteusFrame to work with Pandas, Polars, and other libraries.
 """
 
 from .base import BackendAdapter
