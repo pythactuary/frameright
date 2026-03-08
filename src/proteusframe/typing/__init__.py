@@ -23,8 +23,8 @@ if TYPE_CHECKING:
     # When Polars DataFrames are used, the runtime adapter handles
     # the actual column types; the static hints remain pd.Series
     # because there is no Union-based way to overload at check time.
-    Col: TypeAlias = pd.Series[Any]
-    Index: TypeAlias = pd.Index[Any]
+    Col: TypeAlias = pd.Series[T]
+    Index: TypeAlias = pd.Index[T]
 else:
 
     class Col(Generic[T]):

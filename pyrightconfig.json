@@ -1,0 +1,10 @@
+{
+  "typeCheckingMode": "basic",
+  "extraPaths": ["src"],
+  "exclude": [
+    "**/__pycache__",
+    ".venv",
+    "htmlcov",
+    "src/proteusframe.egg-info"
+  ]
+}

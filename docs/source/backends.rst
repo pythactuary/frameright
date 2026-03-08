@@ -37,6 +37,20 @@ ProteusFrame automatically detects which backend you're using based on the DataF
 
 No configuration needed. Backend selection is transparent.
 
+Typing Notes
+------------
+
+ProteusFrame schemas are backend-agnostic, but you can opt into backend-specific typing for a better IDE experience:
+
+* Pandas: ``from proteusframe.typing.pandas import Col, Index`` (columns type-check as ``pd.Series[T]``)
+* Polars: ``from proteusframe.typing.polars import Col, Index`` (columns type-check as ``pl.Expr`` for expression chaining)
+
+At runtime, the actual values you get depend on the backend:
+
+* Pandas: properties return ``pd.Series``
+* Polars eager ``pl.DataFrame``: properties return ``pl.Series``
+* Polars lazy ``pl.LazyFrame``: properties return ``pl.Expr`` (lazy expressions)
+
 Pandas Backend
 --------------
 
@@ -108,7 +122,8 @@ Polars supports lazy evaluation for complex query optimization:
 
     # Operations are lazy until you collect()
     filtered = orders.pf_filter(orders.revenue > 1000)
-    result = filtered.pf_data.collect()  # Execute the full query plan
+    # Execute the full query plan
+    result = filtered.pf_data.collect()
 
 Backend-Agnostic Schemas
 -------------------------
@@ -237,3 +252,42 @@ Switching backends requires minimal code changes:
     result = orders.pf_data.group_by("customer_id").sum()  # Note: group_by vs groupby
 
 The schema definition (`Orders`) stays exactly the same. Only the DataFrame creation and backend-specific method calls change.
+
+
+Adding a Backend (Advanced)
+---------------------------
+
+ProteusFrame's backend layer is an adapter interface implemented per DataFrame library.
+At runtime, backend selection happens via ``proteusframe.detect_backend()`` (type-based)
+or by passing ``backend=...`` explicitly.
+
+If you want to integrate another DataFrame implementation, the intended path is:
+
+1. Implement a ``BackendAdapter`` (see ``proteusframe.backends.base.BackendAdapter``)
+2. Register it with ``proteusframe.register_backend(name, module_path)``
+
+.. code-block:: python
+
+        from proteusframe import register_backend
+
+        register_backend("mybackend", "myproj.proteusframe_backends.mybackend")
+
+
+Notes on cuDF
+-------------
+
+cuDF is a natural candidate because its API is intentionally close to Pandas.
+That said, there are two separate concerns:
+
+* **DataFrame operations** (get/set columns, filtering, I/O, etc.): cuDF can often be supported with a
+    fairly thin adapter because many method names mirror Pandas.
+* **Runtime validation** (Pandera): ProteusFrame currently relies on Pandera's Pandas and Polars backends.
+    If Pandera doesn't support cuDF validation in your environment, a cuDF adapter would either need to:
+
+    - raise a clear ``NotImplementedError`` for ``pf_validate()``, or
+    - validate by materialising to Pandas (acceptable for small/medium data, but defeats GPU benefits), or
+    - provide an alternative validation implementation.
+
+If your primary goal is "typed column access + autocomplete" in production analysis code, cuDF can still be
+valuable even before full runtime validation is available — but it’s best treated as an *experimental* backend
+until the validation story is nailed down.

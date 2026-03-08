@@ -11,7 +11,7 @@ At runtime ``Col`` is identical to the generic sentinel from
 """
 
 import sys
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, TypeVar
 
 if sys.version_info >= (3, 10):
     from typing import TypeAlias
@@ -22,9 +22,10 @@ import pandas as pd
 
 from proteusframe.typing import Col as _RuntimeCol, Index as _RuntimeIndex
 
+T = TypeVar("T")
 if TYPE_CHECKING:
-    Col: TypeAlias = pd.Series[Any]
-    Index: TypeAlias = pd.Index[Any]
+    Col: TypeAlias = pd.Series[T]
+    Index: TypeAlias = pd.Index[T]
 else:
     Col = _RuntimeCol
     Index = _RuntimeIndex

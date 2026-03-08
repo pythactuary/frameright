@@ -212,7 +212,7 @@ Backend detection is automatic. The same schema works with both Pandas and Polar
 
 - **Production-grade validation** — uses [Pandera](https://pandera.readthedocs.io/), the industry-standard DataFrame validation library
 - **Type checking** — column dtypes are validated against annotations on construction
-- **Field constraints** — Pydantic-style rules via `Field()`: `ge`, `gt`, `le`, `lt`, `isin`, `regex`, `min_length`, `max_length`, `nullable`, `unique`, `description`
+- **Field constraints** — Pydantic-style rules via `Field()`: `ge`, `gt`, `le`, `lt`, `isin`, `regex`, `min_length`, `max_length`, `nullable`, `unique`
 - **Helpful error messages** — clear, actionable validation failures with row/column context
 - **Specific exceptions** — `MissingColumnError`, `TypeMismatchError`, `ConstraintViolationError`
 - **Multi-backend** — works with `pandera.pandas` for Pandas and `pandera.polars` for Polars
@@ -244,7 +244,7 @@ Backend detection is automatic. The same schema works with both Pandas and Polar
 
 **ProteusFrame uses Pandera for validation.** Think of ProteusFrame as a developer-friendly wrapper around Pandera that adds IDE-first typed column access and a Pydantic-like API. You get the best of both worlds: production-tested validation from Pandera plus the ergonomics of typed Python classes.
 
-For advanced Pandera features (custom checks, hypothesis testing, lazy error collection), you can access the underlying Pandera schema via `pf_get_pandera_schema()` and use both tools together.
+For advanced Pandera features (custom checks, hypothesis testing, lazy error collection), use Pandera directly alongside ProteusFrame (for example by validating `obj.pf_data` or by applying additional Pandera checks in your pipeline).
 
 ---
 
@@ -303,8 +303,10 @@ Behind the scenes, ProteusFrame builds a Pandera schema from your class definiti
 
 ```python
 class RiskProfile(ProteusFrame):
-    limit: Col[float] = Field(ge=0, description="Policy limit")
-    premium: Col[float] = Field(gt=0, description="Annual premium")
+    limit: Col[float] = Field(ge=0)
+    """Policy limit."""
+    premium: Col[float] = Field(gt=0)
+    """Annual premium."""
     currency: Col[str] = Field(isin=["USD", "EUR", "GBP"])
     country: Optional[Col[str]]
 

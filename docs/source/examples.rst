@@ -15,9 +15,12 @@ Insurance Risk Profile
 
     class RiskProfile(ProteusFrame):
         """Schema for insurance risk data."""
-        limit: Col[float] = Field(ge=0, description="Policy limit")
-        attachment: Col[float] = Field(ge=0, description="Attachment point")
-        premium: Col[float] = Field(gt=0, description="Annual premium")
+        limit: Col[float] = Field(ge=0)
+        """Policy limit."""
+        attachment: Col[float] = Field(ge=0)
+        """Attachment point."""
+        premium: Col[float] = Field(gt=0)
+        """Annual premium."""
         currency: Col[str] = Field(isin=["USD", "EUR", "GBP"])
         country: Optional[Col[str]]
 
@@ -79,6 +82,65 @@ Data Pipeline with Strict Contracts
     raw = RawOrders.pf_from_csv("orders.csv")
     processed = process_orders(raw)
     processed.pf_to_csv("processed_orders.csv")
+
+
+Production Pattern: Validate at Boundaries
+-----------------------------------------
+
+When a DataFrame starts getting passed across modules and teams, a useful rule of thumb is:
+
+* **Validate at I/O boundaries** (file reads, API inputs, database extracts)
+* **Optionally skip validation inside a pipeline** (for performance), then
+* **Re-validate at handoff boundaries** (what you return to other code)
+
+.. code-block:: python
+
+    from __future__ import annotations
+
+    from proteusframe import ProteusFrame, Field
+    from proteusframe.typing import Col
+
+    class Claims(ProteusFrame):
+        claim_id: Col[int] = Field(unique=True, nullable=False)
+        """Stable claim identifier."""
+
+        incurred: Col[float] = Field(gt=0)
+        """Incurred loss (must be strictly positive for ratios)."""
+
+        paid: Col[float] = Field(ge=0)
+        """Paid loss."""
+
+    class ClaimsWithLossRatio(ProteusFrame):
+        claim_id: Col[int] = Field(unique=True, nullable=False)
+        incurred: Col[float] = Field(gt=0)
+        paid: Col[float] = Field(ge=0)
+        loss_ratio: Col[float] = Field(ge=0)
+        """Paid / incurred."""
+
+    def add_loss_ratio(claims: Claims) -> ClaimsWithLossRatio:
+        # Re-wrap without validating yet, because loss_ratio doesn't exist.
+        out = ClaimsWithLossRatio(claims.pf_data, validate=False)
+        out.loss_ratio = out.paid / out.incurred
+        return out.pf_validate()
+
+    # Boundary validation: fail fast on bad inputs
+    claims = Claims.pf_from_csv("claims.csv")
+
+    enriched = add_loss_ratio(claims)
+    high_lr = enriched.pf_filter(enriched.loss_ratio > 0.8)
+
+
+Testing Pattern: Stable Fixtures with pf_example()
+-------------------------------------------------
+
+For unit tests, it can be helpful to generate minimal valid data that always matches the schema:
+
+.. code-block:: python
+
+    def test_loss_ratio_is_nonnegative() -> None:
+        claims = Claims.pf_example(nrows=5)
+        enriched = add_loss_ratio(claims)
+        assert (enriched.loss_ratio >= 0).all()
 
 
 Column Aliasing

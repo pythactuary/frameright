@@ -17,6 +17,14 @@ Typing
    :members:
    :undoc-members:
 
+.. automodule:: proteusframe.typing.pandas
+   :members:
+   :undoc-members:
+
+.. automodule:: proteusframe.typing.polars
+   :members:
+   :undoc-members:
+
 
 Exceptions
 ----------

@@ -21,6 +21,16 @@ Defining a Schema
 
 Define your DataFrame schema as a Python class using ``Col[T]`` type hints:
 
+.. note::
+
+    For the best editor experience, import backend-specific typing shims:
+
+    * Pandas: ``from proteusframe.typing.pandas import Col, Index``
+    * Polars: ``from proteusframe.typing.polars import Col, Index``
+
+    The generic ``from proteusframe.typing import Col`` also works and now preserves
+    the inner type parameter ``T`` for static type checkers.
+
 .. code-block:: python
 
     from proteusframe import ProteusFrame, Field
@@ -116,12 +126,18 @@ To skip validation (e.g. after filtering):
 
     customers = Customer(df, validate=False)
 
+.. tip::
+
+    In production pipelines, a common pattern is to validate at I/O boundaries (CSV reads, API inputs)
+    and at team handoffs (function outputs), while skipping validation on intermediate steps for speed.
+    You can always call ``obj.pf_validate()`` right before returning a ProteusFrame from a public API.
+
 **Benefits of Pandera integration:**
 
 * Industry-standard validation library with extensive testing
 * Clear, actionable error messages with row/column context
 * Works with both Pandas and Polars backends
-* Extensible — access the underlying Pandera schema for custom checks
+* Extensible — use Pandera directly for custom checks on ``obj.pf_data``
 
 
 Type Coercion
