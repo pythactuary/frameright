@@ -8,12 +8,12 @@ Insurance Risk Profile
 
 .. code-block:: python
 
-    from proteusframe import ProteusFrame, Field
+    from proteusframe import ProteusFramePandas, Field  # Backend-specific class
     from proteusframe.typing import Col
     from typing import Optional
     import pandas as pd
 
-    class RiskProfile(ProteusFrame):
+    class RiskProfile(ProteusFramePandas):  # Explicitly uses pandas
         """Schema for insurance risk data."""
         limit: Col[float] = Field(ge=0)
         """Policy limit."""
@@ -35,13 +35,21 @@ Insurance Risk Profile
     excess = risk.attachment + risk.limit
     print(f"Max exposure: {excess.sum():,.0f}")
 
-**With Polars (same schema, better performance):**
+
+**With Polars (eager, pl.Series):**
 
 .. code-block:: python
 
     import polars as pl
+    from proteusframe import ProteusFramePolars, Field  # Backend-specific class
+    from proteusframe.typing.polars_eager import Col
 
-    # Same schema definition as above
+    class RiskProfile(ProteusFramePolars):  # Explicitly uses polars eager
+        limit: Col[float] = Field(ge=0)
+        attachment: Col[float] = Field(ge=0)
+        premium: Col[float] = Field(gt=0)
+        currency: Col[str]
+
     df = pl.DataFrame({
         "limit": [1_000_000.0, 500_000.0],
         "attachment": [500_000.0, 250_000.0],
@@ -49,12 +57,41 @@ Insurance Risk Profile
         "currency": ["USD", "EUR"],
     })
 
-    risk = RiskProfile(df)  # Automatically uses Polars backend
+    risk = RiskProfile(df)  # Uses Polars eager backend
     excess = risk.attachment + risk.limit
     print(f"Max exposure: {excess.sum():,.0f}")
 
+**With Polars Lazy (pl.Expr):**
+
+.. code-block:: python
+
+    import polars as pl
+    from proteusframe import ProteusFramePolarsLazy, Field  # Backend-specific class
+    from proteusframe.typing.polars_lazy import Col
+
+    class LazyRiskProfile(ProteusFramePolarsLazy):  # Explicitly uses polars lazy
+        limit: Col[float] = Field(ge=0)
+        attachment: Col[float] = Field(ge=0)
+        premium: Col[float] = Field(gt=0)
+        currency: Col[str]
+
+    df = pl.DataFrame({
+        "limit": [1_000_000.0, 500_000.0],
+        "attachment": [500_000.0, 250_000.0],
+        "premium": [10_000.0, 5_000.0],
+        "currency": ["USD", "EUR"],
+    })
+
+    # Example: build a lazy query
+    lazy_df = df.lazy()
+    lazy_risk = LazyRiskProfile(lazy_df)
+    # All columns are pl.Expr, so you can use lazy polars methods
+    filtered = lazy_risk.limit.filter(lazy_risk.limit > 600_000)
+    # ...
+
 Polars offers significant performance improvements for large datasets, especially with lazy evaluation.
-The same schema works for both backends — just pass in the DataFrame type you prefer.
+Use ``ProteusFramePolars`` for eager (Series) or ``ProteusFramePolarsLazy`` for lazy (Expr) schemas.
+The same schema logic works for both backends.
 
 
 Data Pipeline with Strict Contracts
@@ -81,7 +118,7 @@ Data Pipeline with Strict Contracts
 
     raw = RawOrders.pf_from_csv("orders.csv")
     processed = process_orders(raw)
-    processed.pf_to_csv("processed_orders.csv")
+    processed.pf_data.to_csv("processed_orders.csv", index=False)
 
 
 Production Pattern: Validate at Boundaries
@@ -127,7 +164,8 @@ When a DataFrame starts getting passed across modules and teams, a useful rule o
     claims = Claims.pf_from_csv("claims.csv")
 
     enriched = add_loss_ratio(claims)
-    high_lr = enriched.pf_filter(enriched.loss_ratio > 0.8)
+    high_lr_df = enriched.pf_data[enriched.loss_ratio > 0.8]
+    high_lr = ClaimsWithLossRatio(high_lr_df, validate=False)
 
 
 Testing Pattern: Stable Fixtures with pf_example()

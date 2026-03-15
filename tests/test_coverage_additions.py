@@ -1,7 +1,7 @@
 """Additional tests to increase coverage to 95%+"""
 
-import pytest
 import pandas as pd
+import pytest
 
 try:
     import polars as pl
@@ -10,18 +10,24 @@ try:
 except ImportError:
     HAS_POLARS = False
 
-from proteusframe import ProteusFrame, Field
-from proteusframe.typing import Col
+from proteusframe import (
+    Field,
+    ProteusFrame,
+    ProteusFramePandas,
+    ProteusFramePolars,
+    ProteusFramePolarsLazy,
+)
 from proteusframe.exceptions import (
-    TypeMismatchError,
     ConstraintViolationError,
     MissingColumnError,
+    TypeMismatchError,
     ValidationError,
 )
-from typing import Optional
+from proteusframe.typing import Col
 
 
-class SimpleSchema(ProteusFrame):
+# Pandas Schema Classes
+class SimpleSchema(ProteusFramePandas):
     """Simple schema for coverage tests."""
 
     id: Col[int]
@@ -29,13 +35,47 @@ class SimpleSchema(ProteusFrame):
     value: Col[float]
 
 
-class ConstrainedSchema(ProteusFrame):
+class ConstrainedSchema(ProteusFramePandas):
     """Schema with various constraints for testing validation."""
 
     id: Col[int] = Field(unique=True, ge=1)
     code: Col[str] = Field(regex=r"^[A-Z]{3}$")
     amount: Col[float] = Field(gt=0, lt=1000)
     category: Col[str] = Field(isin=["A", "B", "C"])
+
+
+# Polars Schema Classes (only defined if Polars is available)
+if HAS_POLARS:
+
+    class SimpleSchemaPolars(ProteusFramePolars):
+        """Simple schema for polars coverage tests."""
+
+        id: Col[int]
+        name: Col[str]
+        value: Col[float]
+
+    class ConstrainedSchemaPolars(ProteusFramePolars):
+        """Schema with various constraints for testing validation."""
+
+        id: Col[int] = Field(unique=True, ge=1)
+        code: Col[str] = Field(regex=r"^[A-Z]{3}$")
+        amount: Col[float] = Field(gt=0, lt=1000)
+        category: Col[str] = Field(isin=["A", "B", "C"])
+
+    class SimpleSchemaPolarsLazy(ProteusFramePolarsLazy):
+        """Simple schema for polars coverage tests."""
+
+        id: Col[int]
+        name: Col[str]
+        value: Col[float]
+
+    class ConstrainedSchemaPolarsLazy(ProteusFramePolarsLazy):
+        """Schema with various constraints for testing validation."""
+
+        id: Col[int] = Field(unique=True, ge=1)
+        code: Col[str] = Field(regex=r"^[A-Z]{3}$")
+        amount: Col[float] = Field(gt=0, lt=1000)
+        category: Col[str] = Field(isin=["A", "B", "C"])
 
 
 # =============================================================================
@@ -50,14 +90,14 @@ class TestPandasBackendCoverage:
         """Test to_dict with orient='list'."""
         df = pd.DataFrame({"id": [1, 2], "name": ["a", "b"], "value": [1.0, 2.0]})
         schema = SimpleSchema(df)
-        result = schema.pf_to_dict(orient="list")
+        result = schema.pf_data.to_dict(orient="list")
         assert result == {"id": [1, 2], "name": ["a", "b"], "value": [1.0, 2.0]}
 
     def test_to_dict_dict_orient(self):
         """Test to_dict with orient='dict'."""
         df = pd.DataFrame({"id": [1, 2], "name": ["a", "b"], "value": [1.0, 2.0]})
         schema = SimpleSchema(df)
-        result = schema.pf_to_dict(orient="dict")
+        result = schema.pf_data.to_dict(orient="dict")
         # pandas orient='dict' returns {col: {index: value}} format
         assert "id" in result
         assert "name" in result
@@ -69,7 +109,7 @@ class TestPandasBackendCoverage:
         """Test to_dict with orient='records' (default)."""
         df = pd.DataFrame({"id": [1, 2], "name": ["a", "b"], "value": [1.0, 2.0]})
         schema = SimpleSchema(df)
-        result = schema.pf_to_dict(orient="records")
+        result = schema.pf_data.to_dict(orient="records")
         assert len(result) == 2
         assert result[0] == {"id": 1, "name": "a", "value": 1.0}
 
@@ -87,17 +127,23 @@ class TestPandasBackendCoverage:
         assert not backend.equals(df1, df3)
 
     def test_filter_rows(self):
-        """Test pf_filter method."""
-        df = pd.DataFrame({"id": [1, 2, 3], "name": ["a", "b", "c"], "value": [1.0, 2.0, 3.0]})
+        """Test filtering with native pandas methods."""
+        df = pd.DataFrame(
+            {"id": [1, 2, 3], "name": ["a", "b", "c"], "value": [1.0, 2.0, 3.0]}
+        )
         schema = SimpleSchema(df)
-        filtered = schema.pf_filter(schema.value > 1.5)
+        filtered = schema.__class__(
+            schema.pf_data[schema.value > 1.5], copy=False, validate=False
+        )
         assert len(filtered.pf_data) == 2
         assert filtered.id.tolist() == [2, 3]
 
     def test_multiindex_operations(self):
         """Test MultiIndex operations via backend."""
         df = pd.DataFrame({"id": [1, 2], "name": ["a", "b"], "value": [1.0, 2.0]})
-        df.index = pd.MultiIndex.from_arrays([[1, 2], ["x", "y"]], names=["idx1", "idx2"])
+        df.index = pd.MultiIndex.from_arrays(
+            [[1, 2], ["x", "y"]], names=["idx1", "idx2"]
+        )
 
         from proteusframe.backends.pandas_backend import PandasBackend
 
@@ -116,9 +162,14 @@ class TestPandasBackendCoverage:
         """Test different constraint violations for coverage."""
         # Test regex violation - this should pass
         df_regex = pd.DataFrame(
-            {"id": [1, 2], "code": ["ABC", "XYZ"], "amount": [10.0, 20.0], "category": ["A", "B"]}
+            {
+                "id": [1, 2],
+                "code": ["ABC", "XYZ"],
+                "amount": [10.0, 20.0],
+                "category": ["A", "B"],
+            }
         )
-        schema = ConstrainedSchema(df_regex)  # Should pass
+        _ = ConstrainedSchema(df_regex)  # Should pass
 
         # Test isin violation
         df_isin = pd.DataFrame(
@@ -193,11 +244,13 @@ class TestPolarsBackendCoverage:
 
     def test_lazyframe_operations(self):
         """Test operations with LazyFrame."""
-        df = pl.DataFrame({"id": [1, 2, 3], "name": ["a", "b", "c"], "value": [1.0, 2.0, 3.0]})
+        df = pl.DataFrame(
+            {"id": [1, 2, 3], "name": ["a", "b", "c"], "value": [1.0, 2.0, 3.0]}
+        )
         lazy_df = df.lazy()
 
         # LazyFrame should be detected
-        schema = SimpleSchema(lazy_df)
+        schema = SimpleSchemaPolarsLazy(lazy_df)
         assert len(schema.pf_data.collect()) == 3
 
         # Test has_column with LazyFrame
@@ -216,31 +269,31 @@ class TestPolarsBackendCoverage:
     def test_to_dict_orientations(self):
         """Test to_dict with different orient options."""
         df = pl.DataFrame({"id": [1, 2], "name": ["a", "b"], "value": [1.0, 2.0]})
-        schema = SimpleSchema(df)
+        schema = SimpleSchemaPolars(df)
 
-        # orient='records' (default)
-        result_records = schema.pf_to_dict(orient="records")
+        # Polars uses to_dicts() for list of records
+        result_records = schema.pf_data.to_dicts()
         assert len(result_records) == 2
         assert result_records[0] == {"id": 1, "name": "a", "value": 1.0}
 
-        # orient='dict'
-        result_dict = schema.pf_to_dict(orient="dict")
+        # Polars uses to_dict(as_series=False) for dict of lists
+        result_dict = schema.pf_data.to_dict(as_series=False)
         assert result_dict == {"id": [1, 2], "name": ["a", "b"], "value": [1.0, 2.0]}
 
-        # orient='list'
-        result_list = schema.pf_to_dict(orient="list")
+        # Same as dict for polars
+        result_list = schema.pf_data.to_dict(as_series=False)
         assert result_list == {"id": [1, 2], "name": ["a", "b"], "value": [1.0, 2.0]}
 
-        # unknown orient defaults to records
-        result_unknown = schema.pf_to_dict(orient="unknown")
-        assert len(result_unknown) == 2
+        # Test default behavior
+        result_default = schema.pf_data.to_dicts()
+        assert len(result_default) == 2
 
     def test_lazyframe_to_dict(self):
         """Test to_dict with LazyFrame."""
         df = pl.DataFrame({"id": [1, 2], "name": ["a", "b"], "value": [1.0, 2.0]})
         lazy_df = df.lazy()
-        schema = SimpleSchema(lazy_df)
-        result = schema.pf_to_dict(orient="records")
+        schema = SimpleSchemaPolarsLazy(lazy_df)
+        result = schema.pf_data.collect().to_dicts()
         assert len(result) == 2
 
     def test_lazyframe_backend_equals(self):
@@ -286,7 +339,9 @@ class TestPolarsBackendCoverage:
 
     def test_polars_index_operations(self):
         """Test Polars index operations (which use column fallback)."""
-        df = pl.DataFrame({"id": [1, 2, 3], "name": ["a", "b", "c"], "value": [1.0, 2.0, 3.0]})
+        df = pl.DataFrame(
+            {"id": [1, 2, 3], "name": ["a", "b", "c"], "value": [1.0, 2.0, 3.0]}
+        )
 
         from proteusframe.backends.polars_backend import PolarsBackend
 
@@ -325,7 +380,7 @@ class TestPolarsBackendCoverage:
             }
         )
         with pytest.raises(TypeMismatchError):
-            ConstrainedSchema(df)
+            ConstrainedSchemaPolars(df)
 
         # Constraint violation - unique
         df_dup = pl.DataFrame(
@@ -337,7 +392,7 @@ class TestPolarsBackendCoverage:
             }
         )
         with pytest.raises(ConstraintViolationError):
-            ConstrainedSchema(df_dup)
+            ConstrainedSchemaPolars(df_dup)
 
         # Constraint violation - regex
         df_regex = pl.DataFrame(
@@ -349,7 +404,7 @@ class TestPolarsBackendCoverage:
             }
         )
         with pytest.raises(ConstraintViolationError):
-            ConstrainedSchema(df_regex)
+            ConstrainedSchemaPolars(df_regex)
 
         # Constraint violation - range
         df_range = pl.DataFrame(
@@ -361,17 +416,23 @@ class TestPolarsBackendCoverage:
             }
         )
         with pytest.raises(ConstraintViolationError):
-            ConstrainedSchema(df_range)
+            ConstrainedSchemaPolars(df_range)
 
     def test_polars_filter_rows(self):
         """Test filter_rows for Polars."""
         df = pl.DataFrame(
-            {"id": [1, 2, 3, 4], "name": ["a", "b", "c", "d"], "value": [1.0, 2.0, 3.0, 4.0]}
+            {
+                "id": [1, 2, 3, 4],
+                "name": ["a", "b", "c", "d"],
+                "value": [1.0, 2.0, 3.0, 4.0],
+            }
         )
-        schema = SimpleSchema(df)
+        schema = SimpleSchemaPolars(df)
 
         # Filter using boolean mask
-        filtered = schema.pf_filter(schema.value > 2.0)
+        filtered = schema.__class__(
+            schema.pf_data.filter(schema.value > 2.0), copy=False, validate=False  # type: ignore[call-arg]
+        )
         assert len(filtered.pf_data) == 2
         assert filtered.id.to_list() == [3, 4]
 
@@ -379,14 +440,14 @@ class TestPolarsBackendCoverage:
         """Test to_csv with LazyFrame."""
         df = pl.DataFrame({"id": [1, 2], "name": ["a", "b"], "value": [1.0, 2.0]})
         lazy_df = df.lazy()
-        schema = SimpleSchema(lazy_df)
+        schema = SimpleSchemaPolarsLazy(lazy_df)
 
-        import tempfile
         import os
+        import tempfile
 
         with tempfile.TemporaryDirectory() as tmpdir:
             path = os.path.join(tmpdir, "test.csv")
-            schema.pf_to_csv(path)
+            schema.pf_data.collect().write_csv(path)
             assert os.path.exists(path)
 
 
@@ -407,10 +468,10 @@ class TestImportCoverage:
 
     def test_polars_typing_imports(self):
         """Test polars typing imports are accessible."""
-        from proteusframe.typing.polars import Col, Index
+        from proteusframe.typing.polars_eager import Col
 
         assert Col is not None
-        assert Index is not None
+        # Note: Polars doesn't have an Index concept, so we only import Col
 
     def test_generic_typing_imports(self):
         """Test generic typing imports."""
@@ -464,8 +525,8 @@ class TestCoercionAndEdgeCases:
         df = pl.DataFrame({"id": [1, 2], "flag": ["true", "false"]})
         # This will attempt coercion and should handle it gracefully
         try:
-            schema = BoolSchema.pf_coerce(df)
-        except:
+            _ = BoolSchema.pf_coerce(df)
+        except Exception:
             # Some coercions may fail, which is fine for coverage
             pass
 
@@ -512,14 +573,14 @@ class TestCoercionAndEdgeCases:
         df = pl.DataFrame({"id": [1, 2], "name": ["a", "b"]})
         lazy = df.lazy()
 
-        from proteusframe.backends.polars_backend import PolarsBackend
+        from proteusframe.backends.narwhals_backend import NarwhalsBackend
 
-        backend = PolarsBackend()
+        backend = NarwhalsBackend()
 
         # Test both branches
-        assert backend.has_column(lazy, "id")
-        assert backend.has_column(lazy, "name")
-        assert not backend.has_column(lazy, "missing")
+        assert backend.has_column(lazy, "id")  # type: ignore[arg-type]
+        assert backend.has_column(lazy, "name")  # type: ignore[arg-type]
+        assert not backend.has_column(lazy, "missing")  # type: ignore[arg-type]
 
     @pytest.mark.skipif(not HAS_POLARS, reason="Polars not installed")
     def test_polars_set_index_with_non_series(self):
@@ -539,19 +600,19 @@ class TestCoercionAndEdgeCases:
         """Test Polars get_index_level with missing column."""
         df = pl.DataFrame({"id": [1, 2], "name": ["a", "b"]})
 
-        from proteusframe.backends.polars_backend import PolarsBackend
+        from proteusframe.backends.narwhals_backend import NarwhalsBackend
 
-        backend = PolarsBackend()
+        backend = NarwhalsBackend()
 
         # Try to get a non-existent index level
         with pytest.raises(KeyError):
-            backend.get_index_level(df, "nonexistent_level")
+            backend.get_index_level(df, "nonexistent_level")  # type: ignore[arg-type]
 
     def test_pandas_to_dict_index_orient(self):
         """Test pandas to_dict with index orient."""
         df = pd.DataFrame({"id": [1, 2], "name": ["a", "b"], "value": [1.0, 2.0]})
         schema = SimpleSchema(df)
-        result = schema.pf_to_dict(orient="index")
+        result = schema.pf_data.to_dict(orient="index")
         # index orient returns {index: {col: val}}
         assert 0 in result
         assert result[0]["id"] == 1
@@ -560,7 +621,7 @@ class TestCoercionAndEdgeCases:
         """Test pandas to_dict with series orient."""
         df = pd.DataFrame({"id": [1], "name": ["a"], "value": [1.0]})
         schema = SimpleSchema(df)
-        result = schema.pf_to_dict(orient="series")
+        result = schema.pf_data.to_dict(orient="series")
         # series orient returns {col: Series}
         assert "id" in result
         assert hasattr(result["id"], "tolist")
@@ -580,10 +641,10 @@ class TestCoercionAndEdgeCases:
                 "value": ["1.5", "bad", "3.5"],  # "bad" will be coerced to null
             }
         )
-        schema = FloatSchema.pf_coerce(df, errors="coerce")
+        schema = FloatSchema.pf_coerce(df, errors="coerce", backend="polars")
         assert len(schema.pf_data) == 3
         # bad value should be None/null
-        assert schema.value.null_count() == 1
+        assert schema.value.null_count() == 1  # type: ignore[attr-defined]
 
     @pytest.mark.skipif(not HAS_POLARS, reason="Polars not installed")
     def test_polars_coerce_non_bool_type(self):
@@ -599,7 +660,7 @@ class TestCoercionAndEdgeCases:
                 "count": [10.5, 20.7],  # floats to ints
             }
         )
-        schema = IntSchema.pf_coerce(df)
+        schema = IntSchema.pf_coerce(df, backend="polars")
         assert schema.count.dtype == pl.Int64
 
     @pytest.mark.skipif(not HAS_POLARS, reason="Polars not installed")
@@ -660,8 +721,8 @@ class TestCoercionAndEdgeCases:
     @pytest.mark.skipif(not HAS_POLARS, reason="Polars not installed")
     def test_polars_example_unknown_and_date_types(self):
         """Test Polars example with unknown type and date."""
-        from typing import Any
         from datetime import date
+        from typing import Any
 
         class MixedSchema(ProteusFrame):
             id: Col[int]
@@ -699,7 +760,7 @@ class TestCoercionAndEdgeCases:
 
         df = pl.DataFrame({"id": [1, 2, 3], "name": ["a", "b", "c"]}).lazy()
         # Create schema with lazy frame
-        schema = SimpleSchema(df, validate=False)
+        schema = SimpleSchema(df, validate=False, backend="polars")
         # Should collect and get height
         backend = schema.pf_backend
         nrows = backend.num_rows(df)
@@ -714,7 +775,7 @@ class TestCoercionAndEdgeCases:
             value: Col[int]
 
         df = pl.DataFrame({"id": [1, 2, 3], "value": [10, 20, 30]}).lazy()
-        schema = SimpleSchema(df, validate=False)
+        schema = SimpleSchema(df, validate=False, backend="polars")
 
         # Create a Series mask
         mask = pl.Series([True, False, True])
@@ -735,7 +796,7 @@ class TestCoercionAndEdgeCases:
         df = pl.DataFrame({"id": [1, 2], "value": ["not_an_int", "also_not"]})
 
         with pytest.raises(TypeError) as exc_info:
-            IntSchema.pf_coerce(df, errors="raise")
+            IntSchema.pf_coerce(df, errors="raise", backend="polars")
         assert "Cannot coerce" in str(exc_info.value)
 
     def test_pandas_validation_single_error_missing_column(self):
@@ -775,20 +836,3 @@ class TestCoercionAndEdgeCases:
 
         with pytest.raises((TypeMismatchError, ValidationError)):
             TypedSchema(df)
-
-    def test_pandas_validation_single_error_constraint(self):
-        """Test pandas single validation error with constraint violation."""
-
-        class ConstrainedSchema(ProteusFrame):
-            id: Col[int]
-            value: Col[int] = Field(gt=0)  # Must be > 0
-
-        df = pd.DataFrame(
-            {
-                "id": [1, 2],
-                "value": [-5, 10],  # -5 violates constraint
-            }
-        )
-
-        with pytest.raises((ConstraintViolationError, ValidationError)):
-            ConstrainedSchema(df)

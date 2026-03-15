@@ -1,43 +1,14 @@
-"""Polars-specific column and index types for ProteusFrame.
+"""
+Polars column types for ProteusFrame (compatibility shim).
 
-Use these imports when your ProteusFrame subclass wraps a **Polars** DataFrame:
+**Recommended:**
+    - For eager DataFrame: from proteusframe.typing.polars_eager import Col
+    - For lazy LazyFrame: from proteusframe.typing.polars_lazy import Col
 
-    from proteusframe.typing.polars import Col, Index
-
-At type-check time ``Col[T]`` resolves to a generic subclass of ``pl.Expr``
-so that:
-
-* Your IDE autocompletes Polars expression methods (``filter``, ``sum``,
-  ``over``, etc.) rather than pandas ``Series`` methods.
-* The inner type ``T`` is preserved — hovering over ``score: Col[float]``
-  shows ``Col[float]``, not just ``pl.Expr``.
-
-At runtime ``Col`` is identical to the generic sentinel from
-``proteusframe.typing`` (used by ``__init_subclass__`` for schema parsing).
+This file exists for backward compatibility and re-exports Col as eager mode.
+All generic typing logic is in polars_eager and polars_lazy.
 """
 
-from typing import TYPE_CHECKING, Generic, TypeVar
+from proteusframe.typing.polars_eager import Col
 
-from proteusframe.typing import Col as _RuntimeCol, Index as _RuntimeIndex
-
-T = TypeVar("T")
-
-if TYPE_CHECKING:
-    import polars as pl
-
-    class Col(pl.Expr, Generic[T]):
-        """Polars column expression that preserves the inner type *T*."""
-
-        ...
-
-    class Index(pl.Expr, Generic[T]):
-        """Polars index expression that preserves the inner type *T*."""
-
-        ...
-
-else:
-    Col = _RuntimeCol
-    Index = _RuntimeIndex
-
-
-__all__ = ["Col", "Index"]
+__all__ = ["Col"]

@@ -8,14 +8,14 @@ back to real types via namespace-injected ``get_type_hints``.
 
 from __future__ import annotations
 
-import pytest
-import pandas as pd
 from typing import Optional
 
-from proteusframe import ProteusFrame, Field
-from proteusframe.typing import Col, Index
-from proteusframe.exceptions import ConstraintViolationError, MissingColumnError
+import pandas as pd
+import pytest
 
+from proteusframe import Field, ProteusFrame
+from proteusframe.exceptions import ConstraintViolationError, MissingColumnError
+from proteusframe.typing import Col, Index
 
 # ---------------------------------------------------------------------------
 # Schemas defined with stringified annotations (PEP 563)
@@ -116,7 +116,7 @@ class TestFutureAnnotationsPolars:
         import polars as pl
 
         df = pl.DataFrame({"x": [1, 2], "y": ["a", "b"], "z": [1.0, 2.0]})
-        obj = FutureSchema(df)
+        obj = FutureSchema(df, backend="polars")
         assert len(obj) == 2
         assert obj.pf_backend.name == "polars"
 
@@ -124,7 +124,7 @@ class TestFutureAnnotationsPolars:
         import polars as pl
 
         lf = pl.LazyFrame({"x": [1, 2], "y": ["a", "b"], "z": [1.0, 2.0]})
-        obj = FutureSchema(lf)
+        obj = FutureSchema(lf, backend="polars")
         assert len(obj) == 2
 
 

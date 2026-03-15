@@ -225,6 +225,7 @@ class PolarsBackend(BackendAdapter):
     def build_pandera_schema(
         self,
         pf_schema: Dict[str, dict],
+        df: Optional[Any] = None,
         check_types: bool = True,
     ) -> Any:
         import pandera.polars as pa

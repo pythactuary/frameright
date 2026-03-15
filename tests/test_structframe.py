@@ -93,20 +93,20 @@ class TestInitialization:
         """Valid data creates a valid object with correct properties."""
         users = UserData(valid_df)
         assert len(users) == 3
-        assert users.tier.iloc[0] == "Pro"
-        assert users.is_active.iloc[1] == False
+        assert users.tier[0] == "Pro"
+        assert users.is_active[1] == False
 
     def test_copy_flag_creates_independent_copy(self, valid_df):
         """copy=True should create an independent copy of the data."""
         users = UserData(valid_df, copy=True)
         valid_df.loc[0, "user_id"] = 999
-        assert users.user_id.iloc[0] == 1  # unaffected
+        assert users.user_id[0] == 1  # unaffected
 
     def test_no_copy_shares_data(self, valid_df):
         """copy=False (default) should share the underlying data."""
         users = UserData(valid_df, copy=False)
         valid_df.loc[0, "username"] = "modified"
-        assert users.username.iloc[0] == "modified"
+        assert users.username[0] == "modified"
 
     def test_validate_false_skips_validation(self):
         """validate=False should skip all validation checks."""
@@ -175,7 +175,7 @@ class TestDtypeValidation:
         """String columns should accept object dtype (the pandas default)."""
         # This is the happy path - object dtype is valid for str
         users = UserData(valid_df)
-        assert users.username.iloc[0] == "alice"
+        assert users.username[0] == "alice"
 
 
 # ===========================================================================
@@ -223,7 +223,7 @@ class TestFieldConstraints:
     def test_regex_constraint_valid(self, strict_df):
         """regex constraint accepts matching values."""
         obj = StrictSchema(strict_df)
-        assert obj.code.iloc[0] == "ABC"
+        assert obj.code[0] == "ABC"
 
     def test_min_length_constraint(self, valid_df):
         """min_length constraint rejects values that are too short."""
@@ -257,7 +257,7 @@ class TestFieldConstraints:
 
 class TestProperties:
     def test_getter_returns_series(self, valid_df):
-        """Property getter returns a pd.Series."""
+        """Property getter returns a pandas Series."""
         users = UserData(valid_df)
         assert isinstance(users.username, pd.Series)
 
@@ -265,12 +265,12 @@ class TestProperties:
         """Property setter modifies the underlying DataFrame."""
         users = UserData(valid_df)
         users.engagement_score = users.engagement_score + 10.0
-        assert users.pf_data["engagement_score"].iloc[0] == 95.5
+        assert users.engagement_score[0] == 95.5
 
     def test_alias_property(self, valid_df):
         """Aliased properties access the correct DataFrame column."""
         users = UserData(valid_df)
-        assert users.tier.iloc[0] == "Pro"
+        assert users.tier[0] == "Pro"
         assert "SUBSCRIPTION_TIER" in users.pf_data.columns
 
 
@@ -280,14 +280,6 @@ class TestProperties:
 
 
 class TestCoreMethods:
-    def test_pf_filter_returns_correct_type(self, valid_df):
-        """pf_filter returns a new instance of the same ProteusFrame subclass."""
-        users = UserData(valid_df)
-        active = users.pf_filter(users.is_active)
-        assert isinstance(active, UserData)
-        assert len(active) == 2
-        assert len(users) == 3  # original unchanged
-
     def test_pf_data_returns_dataframe(self, valid_df):
         """pf_data returns the underlying DataFrame."""
         users = UserData(valid_df)
@@ -304,21 +296,6 @@ class TestCoreMethods:
         users = UserData(valid_df, validate=False)
         result = users.pf_validate()
         assert result is users
-
-    def test_pf_to_dict(self, valid_df):
-        """pf_to_dict returns a list of dictionaries."""
-        users = UserData(valid_df)
-        result = users.pf_to_dict()
-        assert isinstance(result, list)
-        assert len(result) == 3
-        assert "username" in result[0]
-
-    def test_pf_to_dict_orient(self, valid_df):
-        """pf_to_dict respects the orient parameter."""
-        users = UserData(valid_df)
-        result = users.pf_to_dict(orient="list")
-        assert isinstance(result, dict)
-        assert "username" in result
 
 
 # ===========================================================================
@@ -370,7 +347,7 @@ class TestCoercion:
         df = pd.DataFrame({"col_a": ["1", "2", "3"], "col_b": ["a", "b", "c"]})
         obj = MinimalSchema.pf_coerce(df)
         assert isinstance(obj, MinimalSchema)
-        assert obj.col_a.iloc[0] == 1
+        assert obj.col_a[0] == 1
 
     def test_pf_coerce_preserves_valid_types(self):
         """pf_coerce doesn't break columns that already have the right dtype."""
@@ -766,7 +743,7 @@ class TestUnionCol:
         """Col[Union[str, None]] validates correctly."""
         df = pd.DataFrame({"name": ["alice", "bob"], "value": [1.0, 2.0]})
         obj = UnionColSchema(df)
-        assert obj.name.iloc[0] == "alice"
+        assert obj.name[0] == "alice"
 
 
 # ===========================================================================
@@ -882,57 +859,7 @@ class TestExceptionHierarchy:
             MinimalSchema(df)
 
 
-# ===========================================================================
-# SECTION 22: Additional pf_filter Tests
-# ===========================================================================
-
-
-class TestFilterEdgeCases:
-    def test_filter_empty_result(self, valid_df):
-        """pf_filter with no matches returns empty ProteusFrame."""
-        users = UserData(valid_df)
-        result = users.pf_filter(users.engagement_score > 999)
-        assert isinstance(result, UserData)
-        assert len(result) == 0
-
-    def test_filter_all_rows(self, valid_df):
-        """pf_filter matching all rows returns full copy."""
-        users = UserData(valid_df)
-        result = users.pf_filter(users.engagement_score >= 0)
-        assert len(result) == 3
-
-    def test_filter_chaining(self, valid_df):
-        """pf_filter can be chained multiple times."""
-        users = UserData(valid_df)
-        result = users.pf_filter(users.is_active).pf_filter(
-            users.engagement_score[users.is_active] > 50
-        )
-        assert isinstance(result, UserData)
-
-
-# ===========================================================================
-# SECTION 23: pf_to_csv
-# ===========================================================================
-
-
-class TestToCsv:
-    def test_pf_to_csv_roundtrip(self, tmp_path):
-        """pf_to_csv produces a file that can be read back."""
-        df = pd.DataFrame({"col_a": [1, 2, 3], "col_b": ["x", "y", "z"]})
-        obj = MinimalSchema(df)
-        csv_path = str(tmp_path / "out.csv")
-        obj.pf_to_csv(csv_path)
-        loaded = pd.read_csv(csv_path)
-        assert len(loaded) == 3
-        assert list(loaded.columns) == ["col_a", "col_b"]
-
-    def test_pf_to_csv_roundtrip_with_alias(self, valid_df, tmp_path):
-        """pf_to_csv preserves aliased column names."""
-        users = UserData(valid_df)
-        csv_path = str(tmp_path / "users.csv")
-        users.pf_to_csv(csv_path)
-        loaded = pd.read_csv(csv_path)
-        assert "SUBSCRIPTION_TIER" in loaded.columns
+# Tests for deleted wrapper methods removed - use native DataFrame methods directly
 
 
 # ===========================================================================
@@ -949,7 +876,7 @@ class TestCoerceAdditional:
 
         df = pd.DataFrame({"val": ["1.5", "2.5", "3.5"]})
         obj = FloatSchema.pf_coerce(df)
-        assert obj.val.iloc[0] == 1.5
+        assert obj.val[0] == 1.5
 
     def test_pf_coerce_to_bool(self):
         """pf_coerce converts to bool."""
@@ -959,7 +886,7 @@ class TestCoerceAdditional:
 
         df = pd.DataFrame({"flag": [1, 0, 1]})
         obj = BoolSchema.pf_coerce(df)
-        assert obj.flag.iloc[0] == True
+        assert obj.flag[0] == True
 
     def test_pf_coerce_to_datetime(self):
         """pf_coerce converts strings to datetime."""
@@ -1150,8 +1077,8 @@ def test_integer_coercion_nullable():
     obj = IntSchema.pf_coerce(df, errors="coerce")
 
     assert str(obj.count.dtype) == "Int64"
-    assert obj.count.iloc[0] == 1
-    assert pd.isna(obj.count.iloc[2])
+    assert obj.count[0] == 1
+    assert pd.isna(obj.count[2])
 
 
 def test_integer_coercion_with_floats_safe():
@@ -1163,7 +1090,7 @@ def test_integer_coercion_with_floats_safe():
 
     obj = IntSchema.pf_coerce(df)
     assert str(obj.count.dtype) == "Int64"
-    assert obj.count.iloc[0] == 1
+    assert obj.count[0] == 1
 
 
 def test_integer_coercion_with_floats_lossy():
@@ -1190,7 +1117,7 @@ def test_boolean_coercion_strings():
     obj = BoolSchema.pf_coerce(df)
 
     expected = [True, False, True, False, True, False]
-    assert obj.flag.tolist() == expected
+    assert obj.flag.to_list() == expected
 
 
 def test_nullable_constraint_logic_detailed():
@@ -1289,9 +1216,9 @@ def test_boolean_coercion_accepts_valid_strings():
     obj = BoolSchema.pf_coerce(df, errors="raise")
     assert len(obj) == 10
     # First value should be True
-    assert obj.flag.iloc[0] is True or obj.flag.iloc[0] == True
+    assert obj.flag[0] is True or obj.flag[0] == True
     # Second value should be False
-    assert obj.flag.iloc[1] is False or obj.flag.iloc[1] == False
+    assert obj.flag[1] is False or obj.flag[1] == False
 
 
 def test_boolean_coercion_handles_na_values():
@@ -1305,8 +1232,8 @@ def test_boolean_coercion_handles_na_values():
     obj = BoolSchema.pf_coerce(df, errors="raise")
     assert len(obj) == 4
     # Check that NA values are preserved
-    assert pd.isna(obj.flag.iloc[1])
-    assert pd.isna(obj.flag.iloc[3])
+    assert pd.isna(obj.flag[1])
+    assert pd.isna(obj.flag[3])
 
 
 def test_boolean_coercion_with_errors_coerce():
@@ -1320,10 +1247,10 @@ def test_boolean_coercion_with_errors_coerce():
     # With errors='coerce', unknown values should become NA
     obj = BoolSchema.pf_coerce(df, errors="coerce")
     assert len(obj) == 4
-    assert obj.flag.iloc[0] is True or obj.flag.iloc[0] == True
-    assert pd.isna(obj.flag.iloc[1])  # "maybe" -> NA
-    assert obj.flag.iloc[2] is False or obj.flag.iloc[2] == False
-    assert pd.isna(obj.flag.iloc[3])  # "unknown" -> NA
+    assert obj.flag[0] is True or obj.flag[0] == True
+    assert pd.isna(obj.flag[1])  # "maybe" -> NA
+    assert obj.flag[2] is False or obj.flag[2] == False
+    assert pd.isna(obj.flag[3])  # "unknown" -> NA
 
 
 def test_contains_checks_python_attribute_names():

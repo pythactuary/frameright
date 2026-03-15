@@ -14,6 +14,14 @@ class Example(ProteusFrame):
 df = pd.DataFrame({"a": [1, 2], "b": [1.5, 2.5]})
 ex = Example(df, validate=False)
 
-# These should be rejected by a static type checker.
-bad_int: pd.Series[int] = ex.b
-bad_float: pd.Series[float] = ex.a
+
+def needs_int(s: pd.Series[int]) -> None:
+    _ = s
+
+
+def needs_float(s: pd.Series[float]) -> None:
+    _ = s
+
+
+needs_int(ex.b)
+needs_float(ex.a)

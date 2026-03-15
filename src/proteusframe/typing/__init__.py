@@ -1,39 +1,48 @@
 """Generic column and index types for ProteusFrame.
 
-At type-check time (mypy, Pylance, PyCharm), ``Col[T]`` resolves to
-``pd.Series[T]`` so that IDE autocomplete and static analysis work.
-At runtime ``Col`` is a lightweight generic sentinel used by
-``__init_subclass__`` to detect annotated columns.
+Col[T] is a generic type used for type annotations in ProteusFrame schemas.
+
+For backend-specific imports:
+- ``from proteusframe.typing.pandas import Col``
+- ``from proteusframe.typing.polars_eager import Col``  # Polars DataFrame (eager)
+- ``from proteusframe.typing.polars_lazy import Col``   # Polars LazyFrame (lazy)
+- ``from proteusframe.typing.narwhals import Col``
+
+At runtime, Col is a lightweight generic sentinel used by
+``__init_subclass__`` to detect annotated columns. At type-check time,
+it's a generic type that allows IDE autocompletion and type hints.
+
+Typing note: with ``pandas-stubs`` installed, type checkers can treat
+``Col[T]`` as ``pd.Series[T]``. Other backends are best-effort because
+their upstream libraries do not currently expose fully generic ``Series[T]``
+/ ``Expr[T]`` types.
 """
 
-import sys
+from datetime import date, datetime
+from typing import TYPE_CHECKING, Generic, TypeAlias, TypeVar
+
 import pandas as pd
-from typing import TYPE_CHECKING, Any, Generic, TypeVar
 
-if sys.version_info >= (3, 10):
-    from typing import TypeAlias
-else:
-    from typing_extensions import TypeAlias
-
-T = TypeVar("T")
+T = TypeVar(
+    "T", int, float, str, pd.DatetimeTZDtype, datetime, date
+)  # Type variable for column data types
 
 if TYPE_CHECKING:
-    # Static type checkers see Col as pd.Series and Index as pd.Index.
-    # This gives full autocomplete and type safety in IDEs.
-    # When Polars DataFrames are used, the runtime adapter handles
-    # the actual column types; the static hints remain pd.Series
-    # because there is no Union-based way to overload at check time.
+    # Type checkers see pandas Series/Index, preserving inner type T
+
     Col: TypeAlias = pd.Series[T]
-    Index: TypeAlias = pd.Index[T]
+    Index: TypeAlias = pd.Index[T]  # type: ignore[misc]
+
+
 else:
 
     class Col(Generic[T]):
-        """Runtime sentinel for column type annotations."""
+        """Generic column type marker for ProteusFrame schemas."""
 
         pass
 
     class Index(Generic[T]):
-        """Runtime sentinel for index type annotations."""
+        """Generic index type marker for ProteusFrame schemas."""
 
         pass
 

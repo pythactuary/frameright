@@ -6,21 +6,35 @@ IDE-friendly autocomplete, and Pydantic-style field constraints.
 Supports Pandas, Polars, and other DataFrame backends.
 """
 
-from .core import Field, FieldInfo, ProteusFrame
+from .backends.registry import get_backend, register_backend
+from .core import (
+    Field,
+    FieldInfo,
+    ProteusFrame,
+    ProteusFrameNarwhals,
+    ProteusFrameNarwhalsLazy,
+    ProteusFramePandas,
+    ProteusFramePolars,
+    ProteusFramePolarsLazy,
+)
 from .exceptions import (
     ConstraintViolationError,
     MissingColumnError,
-    SchemaError,
     ProteusFrameError,
+    SchemaError,
     TypeMismatchError,
     ValidationError,
 )
 from .typing import Col, Index
-from .backends.registry import get_backend, detect_backend, register_backend
 
 __version__ = "0.3.0"
 __all__ = [
     "ProteusFrame",
+    "ProteusFramePandas",
+    "ProteusFramePolars",
+    "ProteusFrameNarwhals",
+    "ProteusFramePolarsLazy",
+    "ProteusFrameNarwhalsLazy",
     "Field",
     "FieldInfo",
     "Col",
@@ -32,6 +46,5 @@ __all__ = [
     "ConstraintViolationError",
     "MissingColumnError",
     "get_backend",
-    "detect_backend",
     "register_backend",
 ]

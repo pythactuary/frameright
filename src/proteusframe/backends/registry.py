@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any, Dict, Optional, Type
+from typing import Any, Dict, Type
 
 from .base import BackendAdapter
 
@@ -13,6 +13,7 @@ _BACKENDS: Dict[str, BackendAdapter] = {}
 _BACKEND_REGISTRY: Dict[str, str] = {
     "pandas": "proteusframe.backends.pandas_backend",
     "polars": "proteusframe.backends.polars_backend",
+    "narwhals": "proteusframe.backends.narwhals_backend",
 }
 
 
@@ -23,7 +24,9 @@ def _load_backend(name: str) -> BackendAdapter:
 
     module_path = _BACKEND_REGISTRY.get(name)
     if module_path is None:
-        raise ValueError(f"Unknown backend '{name}'. Available: {sorted(_BACKEND_REGISTRY)}")
+        raise ValueError(
+            f"Unknown backend '{name}'. Available: {sorted(_BACKEND_REGISTRY)}"
+        )
 
     import importlib
 
@@ -44,7 +47,7 @@ def detect_backend(data: Any) -> BackendAdapter:
     Uses string-based type checks to avoid importing optional libraries.
 
     Args:
-        data: A DataFrame-like object (pd.DataFrame, pl.DataFrame, etc.)
+        data: A DataFrame-like object (pd.DataFrame, pl.DataFrame, nw.DataFrame, etc.)
 
     Returns:
         The matching ``BackendAdapter`` instance.
@@ -53,6 +56,10 @@ def detect_backend(data: Any) -> BackendAdapter:
         TypeError: If no known backend supports the given data type.
     """
     type_name = type(data).__module__ + "." + type(data).__qualname__
+
+    # Narwhals (check first as it wraps other types)
+    if type_name.startswith("narwhals."):
+        return _load_backend("narwhals")
 
     # Pandas
     if type_name.startswith("pandas."):
@@ -69,7 +76,7 @@ def detect_backend(data: Any) -> BackendAdapter:
 
     raise TypeError(
         f"No ProteusFrame backend for type '{type(data).__name__}'. "
-        f"Supported: pandas.DataFrame, polars.DataFrame, polars.LazyFrame."
+        f"Supported: pandas.DataFrame, polars.DataFrame, polars.LazyFrame, narwhals.DataFrame."
     )
 
 
@@ -77,7 +84,7 @@ def get_backend(name: str) -> BackendAdapter:
     """Get a backend adapter by name.
 
     Args:
-        name: One of 'pandas', 'polars', etc.
+        name: One of 'pandas', 'polars', 'narwhals', etc.
 
     Returns:
         The matching ``BackendAdapter`` instance.

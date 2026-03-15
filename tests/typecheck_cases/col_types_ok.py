@@ -22,5 +22,6 @@ def needs_float(s: pd.Series[float]) -> None:
 df = pd.DataFrame({"a": [1, 2], "b": [1.5, 2.5]})
 ex = Example(df, validate=False)
 
+# With pandas stubs installed, attribute accessors type-check as pd.Series[T].
 needs_int(ex.a)
 needs_float(ex.b)

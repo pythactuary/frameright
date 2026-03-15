@@ -5,6 +5,20 @@ All notable changes to ProteusFrame will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+
+#### Backend Selection Simplification
+
+- **Backend-specific classes (recommended)**: Added `ProteusFramePandas`, `ProteusFramePolars`, `ProteusFramePolarsLazy`, `ProteusFrameNarwhals`, and `ProteusFrameNarwhalsLazy` as explicit backend classes for better type safety
+- **Pandas default**: Base `ProteusFrame` class now defaults to pandas backend for backward compatibility (previously required explicit backend parameter or auto-detection)
+- **Explicit over implicit**: Users can choose between:
+  - Backend-specific classes (e.g., `class Sales(ProteusFramePandas)`) for strongest type guarantees
+  - Base `ProteusFrame` with optional `backend` parameter (e.g., `Sales(df, backend="polars")`)
+  - Base `ProteusFrame` with no parameter (defaults to pandas)
+- **Type system improvements**: Removed `Generic[T]` from base class, simplified type inference, fewer type checkers issues
+
 ## [0.3.0] - 2026-03-06
 
 ### Added
@@ -22,7 +36,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Lazy expression properties**: Property getters return `pl.col()` expressions instead of materialized Series, preserving the Polars query optimizer
 - **Expression-aware setters**: `set_column()` handles `pl.Expr`, `pl.Series`, and scalar values via `with_columns()`
 - **LazyFrame transparency**: All ProteusFrame operations (`filter`, `to_dict`, `to_csv`, `validate`) work seamlessly on LazyFrames
-- **`pf_collect()` method**: Escape hatch to materialize LazyFrames when needed
+- **LazyFrame materialisation**: Escape hatch to materialize LazyFrames when needed
 
 #### Backend-Specific Typing
 

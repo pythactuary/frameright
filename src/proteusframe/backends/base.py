@@ -177,12 +177,14 @@ class BackendAdapter(ABC):
     def build_pandera_schema(
         self,
         pf_schema: Dict[str, dict],
+        df: Optional[Any] = None,
         check_types: bool = True,
     ) -> Any:
         """Build a Pandera DataFrameSchema from the parsed ProteusFrame schema.
 
         Args:
             pf_schema: The ``_pf_schema`` dict from a ProteusFrame subclass.
+            df: Optional native dataframe (used by narwhals to detect backend type).
             check_types: Whether to include dtype checks.
 
         Returns:

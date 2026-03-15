@@ -1,7 +1,6 @@
 import ast
 import inspect
 import sys
-from datetime import date, datetime
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -17,17 +16,23 @@ from typing import (
     get_type_hints,
 )
 
-import pandas as pd  # Required dependency (via pandera)
+if sys.version_info >= (3, 11):
+    from typing import Self
+else:
+    from typing_extensions import Self
+
+import pandas as pd
 
 if TYPE_CHECKING:
-    import polars as pl
+    import narwhals as nw  # noqa: F401
+    import pandas as pd  # noqa: F401
+    import polars as pl  # noqa: F401
 
 from .backends.base import BackendAdapter
-from .backends.registry import detect_backend, get_backend
+from .backends.registry import get_backend
 from .exceptions import SchemaError
 from .typing import Col, Index
 
-DFType = TypeVar("DFType", default=pd.DataFrame)
 TProteusFrame = TypeVar("TProteusFrame", bound="ProteusFrame")
 
 
@@ -152,7 +157,7 @@ class FieldInfo:
         return f"Field({', '.join(parts)})" if parts else "Field()"
 
 
-def Field(
+def Field(  # noqa: N802 (function name should be lowercase)
     alias: Optional[str] = None,
     ge: Optional[float] = None,
     gt: Optional[float] = None,
@@ -198,38 +203,53 @@ def Field(
     )
 
 
-class ProteusFrame(Generic[DFType]):
+class ProteusFrame:
     """Base class for the Object-DataFrame Mapper (ODM).
 
     Define your DataFrame schema as a Python class with typed attributes.
     ProteusFrame validates column existence, runtime dtypes, and field-level
     constraints, while providing IDE-friendly autocomplete and type safety.
 
-    Type-parameterize for full IDE support on ``pf_data``::
+    **Do not instantiate ProteusFrame directly.** Use backend-specific subclasses:
+    - ProteusFramePandas: For pandas DataFrames
+    - ProteusFramePolars: For polars eager DataFrames
+    - ProteusFramePolarsLazy: For polars LazyFrames
+    - ProteusFrameNarwhals: For narwhals DataFrames
+    - ProteusFrameNarwhalsLazy: For narwhals LazyFrames
 
-        class Orders(ProteusFrame[pd.DataFrame]):
-            item_price: Col[float]
-            quantity_sold: Col[int] = Field(ge=0)
-            revenue: Optional[Col[float]]
+    Example with pandas::
 
-        orders = Orders(df)
-        orders.pf_data.groupby(...)  # Full pd.DataFrame autocomplete
+        import pandas as pd
+        from proteusframe import ProteusFramePandas
 
-    The type parameter defaults to ``pd.DataFrame``, so omitting it
-    gives the same autocomplete::
+        class Orders(ProteusFramePandas):
+            order_id: Col[int]
+            revenue: Col[float]
 
-        class Orders(ProteusFrame):  # pf_data → pd.DataFrame
-            ...
+        orders = Orders(pd.DataFrame(...))
+        orders.revenue  # Returns pd.Series
+        orders.revenue.sum()  # Use pandas methods
 
-    For Polars, specify explicitly::
+    Example with polars::
 
-        class Orders(ProteusFrame[pl.DataFrame]):  # pf_data → pl.DataFrame
-            ...
+        import polars as pl
+        from proteusframe import ProteusFramePolars
+
+        class Orders(ProteusFramePolars):
+            order_id: Col[int]
+            revenue: Col[float]
+
+        orders = Orders(pl.DataFrame(...))
+        orders.revenue  # Returns pl.Series
+        orders.revenue.sum()  # Use polars methods
+
+    Use ``pf_data`` to access the underlying DataFrame.
     """
 
     # Stores the parsed schema for the specific child class
     _pf_schema: Dict[str, dict]
     _pf_index_attrs: List[Dict[str, Any]]
+    _pf_backend_name: Optional[str] = None  # Set by concrete subclasses
 
     def __init__(
         self,
@@ -242,19 +262,36 @@ class ProteusFrame(Generic[DFType]):
         """Initialise the ProteusFrame wrapper.
 
         Args:
-            df: The DataFrame to wrap (pandas, polars, or other supported backend).
+            df: The DataFrame to wrap.
             copy: If True, copy the DataFrame. Defaults to False to save memory.
             validate: If True, run schema validation on construction. Defaults to True.
             validate_types: If True, also check runtime dtypes during validation.
                             Only used when ``validate`` is True.
-            backend: Explicitly specify backend name (e.g. 'pandas', 'polars').
-                     If None, auto-detect from the DataFrame type.
+            backend: Backend name (e.g. 'pandas', 'polars'). Defaults to 'pandas'.
+                     **Recommended:** Use ProteusFramePandas, ProteusFramePolars, etc. instead
+                     for better type safety.
         """
-        if backend is not None:
-            self._pf_backend: BackendAdapter = get_backend(backend)
-        else:
-            self._pf_backend = detect_backend(df)
+        # Determine backend: concrete subclass setting > explicit parameter > default to pandas
+        if self._pf_backend_name is not None:
+            # Concrete backend-specific class (recommended path)
+            if backend is not None and backend != self._pf_backend_name:
+                import warnings
 
+                warnings.warn(
+                    f"{self.__class__.__name__} is a {self._pf_backend_name} backend class, "
+                    f"but backend='{backend}' was passed. Ignoring parameter.",
+                    UserWarning,
+                    stacklevel=2,
+                )
+            actual_backend = self._pf_backend_name
+        elif backend is not None:
+            # Explicit backend parameter
+            actual_backend = backend
+        else:
+            # Default to pandas for backward compatibility
+            actual_backend = "pandas"
+
+        self._pf_backend: BackendAdapter = get_backend(actual_backend)
         self._pf_df = self._pf_backend.copy(df) if copy else df
 
         if validate:
@@ -350,18 +387,30 @@ class ProteusFrame(Generic[DFType]):
             # 3. Inject the safe Property wrapper
             def make_property(col_name: str, optional_flag: bool) -> property:
                 def getter(self: "ProteusFrame") -> Any:
-                    if optional_flag and not self._pf_backend.has_column(self._pf_df, col_name):
+                    if optional_flag and not self._pf_backend.has_column(
+                        self._pf_df, col_name
+                    ):
                         return None
-                    # For eager DataFrames: return Series (materialized data)
-                    # For LazyFrames: return Expr (lazy evaluation)
-                    try:
-                        return self._pf_backend.get_column(self._pf_df, col_name)
-                    except TypeError:
-                        # LazyFrame case - return expression instead
-                        return self._pf_backend.get_column_ref(self._pf_df, col_name)
+
+                    # For LazyFrames, use get_column_ref() to return expressions (pl.Expr)
+                    # For eager DataFrames, use get_column() to return Series
+                    if hasattr(self._pf_backend, "get_column_ref") and hasattr(
+                        self._pf_df, "__class__"
+                    ):
+                        # Check if it's a LazyFrame (polars backend)
+                        df_type = type(self._pf_df).__name__
+                        if df_type == "LazyFrame":
+                            return self._pf_backend.get_column_ref(
+                                self._pf_df, col_name
+                            )
+
+                    # Return native Series directly (pd.Series, pl.Series, or nw.Series)
+                    return self._pf_backend.get_column(self._pf_df, col_name)
 
                 def setter(self: "ProteusFrame", value: Any) -> None:
-                    self._pf_df = self._pf_backend.set_column(self._pf_df, col_name, value)
+                    self._pf_df = self._pf_backend.set_column(
+                        self._pf_df, col_name, value
+                    )
 
                 return property(getter, setter)
 
@@ -408,7 +457,7 @@ class ProteusFrame(Generic[DFType]):
     # Core Methods (Prefixed with pf_ to avoid namespace collisions)
     # ------------------------------------------------------------------
 
-    def pf_validate(self, check_types: bool = True) -> "ProteusFrame":
+    def pf_validate(self, check_types: bool = True) -> Self:
         """Validate column existence, runtime dtypes, and field-level constraints.
 
         Uses Pandera for validation, with errors translated into ProteusFrame
@@ -429,36 +478,75 @@ class ProteusFrame(Generic[DFType]):
         """
         schema = self._pf_backend.build_pandera_schema(
             self.__class__._pf_schema,
+            self._pf_df,
             check_types=check_types,
         )
         self._pf_backend.validate_with_pandera(self._pf_df, schema, lazy=True)
         return self
 
-    @property
-    def pf_data(self) -> DFType:
-        """Escape hatch to retrieve the raw underlying DataFrame.
+    if TYPE_CHECKING:
 
-        Returns:
-            The underlying DataFrame with full IDE autocomplete.
-            Defaults to ``pd.DataFrame`` when no type parameter is given.
-            Specify ``ProteusFrame[pl.DataFrame]`` for Polars autocomplete.
+        @property
+        def pf_data(self) -> "pd.DataFrame":
+            """Return the underlying DataFrame.
 
-        Example::
+            For pandas backend, returns ``pd.DataFrame``.
+            For polars backend, returns ``pl.DataFrame`` or ``pl.LazyFrame``.
+            For narwhals backend, returns ``nw.DataFrame``.
 
-            class Orders(ProteusFrame):
-                revenue: Col[float]
+            This property gives direct access to the DataFrame for performing
+            operations using the backend's native API::
 
-            orders = Orders(df)
-            orders.pf_data.groupby(...)  # Full pd.DataFrame autocomplete
+                # Pandas operations
+                df.pf_data.groupby('column').sum()
+
+                # Polars operations
+                df.pf_data.filter(pl.col('x') > 5)
+
+                # LazyFrame operations
+                lazy_df.pf_data.collect()
+            """
+            ...
+
+    else:
+
+        @property
+        def pf_data(self) -> Any:
+            """Return the underlying DataFrame.
+
+            For pandas backend, returns ``pd.DataFrame``.
+            For polars backend, returns ``pl.DataFrame`` or ``pl.LazyFrame``.
+            For narwhals backend, returns ``nw.DataFrame``.
+
+            This property gives direct access to the DataFrame for performing
+            operations using the backend's native API::
+
+                # Pandas operations
+                df.pf_data.groupby('column').sum()
+
+                # Polars operations
+                df.pf_data.filter(pl.col('x') > 5)
+
+                # LazyFrame operations
+                lazy_df.pf_data.collect()
+            """
+            return self._pf_df
+
+    def __len__(self) -> int:
+        """Return the number of rows in the DataFrame.
+
+        For LazyFrames, this will trigger execution (collect) to get the row count.
+        If you want to avoid execution, use `.pf_data.collect().shape[0]` instead.
         """
-        return self._pf_df
+        return self._pf_backend.num_rows(self._pf_df)
 
     @property
     def pf_index(self) -> Any:
         """Access the DataFrame index directly.
 
         Returns:
-            The DataFrame index (type depends on backend: pandas Index/MultiIndex or list for Polars).
+            The DataFrame index (type depends on backend: pandas
+            Index/MultiIndex or list for Polars).
         """
         return self._pf_backend.get_index(self._pf_df)
 
@@ -466,37 +554,6 @@ class ProteusFrame(Generic[DFType]):
     def pf_backend(self) -> BackendAdapter:
         """Access the backend adapter."""
         return self._pf_backend
-
-    def pf_filter(self: TProteusFrame, condition: Any) -> TProteusFrame:
-        """Filter rows and return a new instance of the structured object.
-
-        Args:
-            condition: A boolean mask (Series or Polars expression) to apply.
-
-        Returns:
-            A new instance of the same ProteusFrame subclass with filtered rows.
-        """
-        filtered = self._pf_backend.filter_rows(self._pf_df, condition)
-        return self.__class__(filtered, copy=False, validate=False, backend=self._pf_backend.name)
-
-    # ------------------------------------------------------------------
-    # Materialisation
-    # ------------------------------------------------------------------
-
-    def pf_collect(self: TProteusFrame) -> TProteusFrame:
-        """Materialise a lazy backend (e.g. Polars LazyFrame → DataFrame).
-
-        For eager backends (Pandas, Polars DataFrame) this returns *self*
-        unchanged.  For Polars LazyFrames the query plan is executed and
-        a new ProteusFrame wrapping the collected DataFrame is returned.
-
-        Returns:
-            A ProteusFrame backed by an eager DataFrame.
-        """
-        collected = self._pf_backend.collect(self._pf_df)
-        if collected is self._pf_df:
-            return self
-        return self.__class__(collected, copy=False, validate=False, backend=self._pf_backend.name)
 
     # ------------------------------------------------------------------
     # Schema Introspection
@@ -515,7 +572,16 @@ class ProteusFrame(Generic[DFType]):
             fi: FieldInfo = meta["field_info"]
             inner = meta["inner_type"]
             constraints: Dict[str, Any] = {}
-            for key in ["ge", "gt", "le", "lt", "isin", "regex", "min_length", "max_length"]:
+            for key in [
+                "ge",
+                "gt",
+                "le",
+                "lt",
+                "isin",
+                "regex",
+                "min_length",
+                "max_length",
+            ]:
                 val = getattr(fi, key, None)
                 if val is not None:
                     constraints[key] = val
@@ -542,64 +608,67 @@ class ProteusFrame(Generic[DFType]):
     def pf_from_csv(
         cls: Type[TProteusFrame],
         path: str,
-        backend: str = "pandas",
+        backend: Optional[str] = None,
         **kwargs: Any,
     ) -> TProteusFrame:
         """Load a CSV file and wrap it in this ProteusFrame.
 
         Args:
             path: File path to the CSV.
-            backend: Backend to use for reading ('pandas' or 'polars').
+            backend: Backend to use ('pandas' or 'polars'). Defaults to 'pandas'.
             **kwargs: Additional arguments passed to the backend's CSV reader.
 
         Returns:
             A validated instance of this ProteusFrame subclass.
         """
-        adapter = get_backend(backend)
+        actual_backend = cls._pf_backend_name or backend or "pandas"
+        adapter = get_backend(actual_backend)
         df = adapter.read_csv(path, **kwargs)
-        return cls(df, backend=backend)
+        return cls(df, backend=actual_backend)
 
     @classmethod
     def pf_from_dict(
         cls: Type[TProteusFrame],
         data: Dict[str, list],
-        backend: str = "pandas",
+        backend: Optional[str] = None,
         **kwargs: Any,
     ) -> TProteusFrame:
         """Create from a dictionary of lists.
 
         Args:
             data: Dictionary mapping column names to lists of values.
-            backend: Backend to use ('pandas' or 'polars').
+            backend: Backend to use ('pandas' or 'polars'). Defaults to 'pandas'.
             **kwargs: Additional arguments passed to the constructor.
 
         Returns:
             A validated instance of this ProteusFrame subclass.
         """
-        adapter = get_backend(backend)
+        actual_backend = cls._pf_backend_name or backend or "pandas"
+        adapter = get_backend(actual_backend)
         df = adapter.from_dict(data)
-        return cls(df, backend=backend, **kwargs)
+        return cls(df, backend=actual_backend, **kwargs)
 
     @classmethod
     def pf_from_records(
         cls: Type[TProteusFrame],
         records: List[dict],
-        backend: str = "pandas",
+        backend: Optional[str] = None,
         **kwargs: Any,
     ) -> TProteusFrame:
         """Create from a list of row dictionaries.
 
         Args:
             records: List of dictionaries, one per row.
-            backend: Backend to use ('pandas' or 'polars').
+            backend: Backend to use ('pandas' or 'polars'). Defaults to 'pandas'.
             **kwargs: Additional arguments passed to the constructor.
 
         Returns:
             A validated instance of this ProteusFrame subclass.
         """
-        adapter = get_backend(backend)
+        actual_backend = cls._pf_backend_name or backend or "pandas"
+        adapter = get_backend(actual_backend)
         df = adapter.from_records(records)
-        return cls(df, backend=backend, **kwargs)
+        return cls(df, backend=actual_backend, **kwargs)
 
     # ------------------------------------------------------------------
     # Type Coercion
@@ -621,15 +690,13 @@ class ProteusFrame(Generic[DFType]):
             df: The DataFrame to coerce.
             errors: How to handle conversion errors.
                     'raise' (default), 'coerce' (set failures to NaN), or 'ignore'.
-            backend: Explicitly specify backend name. If None, auto-detect.
+            backend: Backend name. Defaults to 'pandas'.
 
         Returns:
             A new, validated ProteusFrame instance with converted dtypes.
         """
-        if backend is not None:
-            adapter = get_backend(backend)
-        else:
-            adapter = detect_backend(df)
+        actual_backend = cls._pf_backend_name or backend or "pandas"
+        adapter = get_backend(actual_backend)
 
         df = adapter.copy(df)
         for attr_name, meta in cls._pf_schema.items():
@@ -642,57 +709,31 @@ class ProteusFrame(Generic[DFType]):
                 df, col, inner_type, errors=errors, nullable=field_info.nullable
             )
 
-        return cls(df, backend=adapter.name)
+        return cls(df, backend=actual_backend)
 
     @classmethod
     def pf_example(
         cls: Type[TProteusFrame],
         nrows: int = 3,
-        backend: str = "pandas",
+        backend: Optional[str] = None,
     ) -> TProteusFrame:
         """Generate an example instance with dummy data for testing.
 
         Args:
             nrows: Number of rows to generate.
-            backend: Backend to use ('pandas' or 'polars').
+            backend: Backend to use ('pandas' or 'polars'). Defaults to 'pandas'.
 
         Returns:
             An instance populated with simple placeholder data.
         """
-        adapter = get_backend(backend)
+        actual_backend = cls._pf_backend_name or backend or "pandas"
+        adapter = get_backend(actual_backend)
         df = adapter.generate_example_data(cls._pf_schema, nrows=nrows)
-        return cls(df, backend=backend)
-
-    # ------------------------------------------------------------------
-    # Export Helpers
-    # ------------------------------------------------------------------
-
-    def pf_to_csv(self, path: str, **kwargs: Any) -> None:
-        """Save the wrapped DataFrame to a CSV file.
-
-        Args:
-            path: File path for the output CSV.
-            **kwargs: Additional arguments passed to the backend's CSV writer.
-        """
-        self._pf_backend.to_csv(self._pf_df, path, **kwargs)
-
-    def pf_to_dict(self, orient: str = "records") -> Any:
-        """Convert the wrapped DataFrame to a dictionary.
-
-        Args:
-            orient: The format of the output dict (see backend docs).
-
-        Returns:
-            A dictionary representation of the data.
-        """
-        return self._pf_backend.to_dict(self._pf_df, orient=orient)
+        return cls(df, backend=actual_backend)
 
     # ------------------------------------------------------------------
     # Python Protocols
     # ------------------------------------------------------------------
-
-    def __len__(self) -> int:
-        return self._pf_backend.num_rows(self._pf_df)
 
     def __repr__(self) -> str:
         schema = self.__class__._pf_schema
@@ -729,3 +770,143 @@ class ProteusFrame(Generic[DFType]):
             return True
         # Fall back to checking raw DataFrame column name
         return self._pf_backend.has_column(self._pf_df, col_name)
+
+
+# ------------------------------------------------------------------
+# Concrete Backend-Specific Classes
+# ------------------------------------------------------------------
+
+
+class ProteusFramePandas(ProteusFrame):
+    """ProteusFrame for pandas DataFrames.
+
+    Use this when working with pandas:
+
+        import pandas as pd
+        from proteusframe import ProteusFramePandas
+
+        class Sales(ProteusFramePandas):
+            customer: Col[str]
+            revenue: Col[float]
+
+        df = pd.DataFrame({"customer": ["Alice"], "revenue": [100.0]})
+        sales = Sales(df)
+        sales.revenue  # Returns pd.Series
+    """
+
+    _pf_backend_name = "pandas"
+
+    if TYPE_CHECKING:
+
+        @property
+        def pf_data(self) -> "pd.DataFrame":
+            """Return the underlying pandas DataFrame."""
+            ...
+
+
+class ProteusFramePolars(ProteusFrame):
+    """ProteusFrame for polars eager DataFrames.
+
+    Use this when working with polars DataFrames:
+
+        import polars as pl
+        from proteusframe import ProteusFramePolars
+
+        class Sales(ProteusFramePolars):
+            customer: Col[str]
+            revenue: Col[float]
+
+        df = pl.DataFrame({"customer": ["Alice"], "revenue": [100.0]})
+        sales = Sales(df)
+        sales.revenue  # Returns pl.Series
+    """
+
+    _pf_backend_name = "polars"
+
+    if TYPE_CHECKING:
+
+        @property
+        def pf_data(self) -> "pl.DataFrame":
+            """Return the underlying polars DataFrame."""
+            ...
+
+
+class ProteusFramePolarsLazy(ProteusFrame):
+    """ProteusFrame for polars LazyFrames.
+
+    Use this when working with polars LazyFrames:
+
+        import polars as pl
+        from proteusframe import ProteusFramePolarsLazy
+
+        class Sales(ProteusFramePolarsLazy):
+            customer: Col[str]
+            revenue: Col[float]
+
+        df = pl.DataFrame({"customer": ["Alice"], "revenue": [100.0]}).lazy()
+        sales = Sales(df)
+        sales.revenue  # Returns pl.Expr (lazy expression)
+    """
+
+    _pf_backend_name = "polars"
+
+    if TYPE_CHECKING:
+
+        @property
+        def pf_data(self) -> "pl.LazyFrame":
+            """Return the underlying polars LazyFrame."""
+            ...
+
+
+class ProteusFrameNarwhals(ProteusFrame):
+    """ProteusFrame for narwhals DataFrames.
+
+    Use this when working with narwhals eager DataFrames:
+
+        import narwhals as nw
+        from proteusframe import ProteusFrameNarwhals
+
+        class Sales(ProteusFrameNarwhals):
+            customer: Col[str]
+            revenue: Col[float]
+
+        df = nw.from_native(pd_or_pl_df)
+        sales = Sales(df)
+        sales.revenue  # Returns nw.Series
+    """
+
+    _pf_backend_name = "narwhals"
+
+    if TYPE_CHECKING:
+
+        @property
+        def pf_data(self) -> "nw.DataFrame":
+            """Return the underlying narwhals DataFrame."""
+            ...
+
+
+class ProteusFrameNarwhalsLazy(ProteusFrame):
+    """ProteusFrame for narwhals LazyFrames.
+
+    Use this when working with narwhals lazy DataFrames:
+
+        import narwhals as nw
+        from proteusframe import ProteusFrameNarwhalsLazy
+
+        class Sales(ProteusFrameNarwhalsLazy):
+            customer: Col[str]
+            revenue: Col[float]
+
+        df = nw.from_native(pl.LazyFrame(...))
+        sales = Sales(df)
+        sales.revenue  # Returns nw.Expr (lazy expression)
+    """
+
+    _pf_backend_name = "narwhals"
+
+    if TYPE_CHECKING:
+
+        @property
+        def pf_data(self) -> "nw.LazyFrame":
+            """Return the underlying narwhals LazyFrame."""
+            ...

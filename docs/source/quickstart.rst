@@ -12,8 +12,11 @@ Installation
     # For Polars backend (optional)
     pip install proteusframe[polars]
 
-ProteusFrame automatically detects which backend you're using based on the DataFrame type.
-No configuration needed.
+    # For Narwhals backend (optional)
+    pip install proteusframe[narwhals]
+
+ProteusFrame supports multiple backends. Use backend-specific classes for type safety,
+or use the base ``ProteusFrame`` class which defaults to pandas.
 
 
 Defining a Schema
@@ -26,10 +29,17 @@ Define your DataFrame schema as a Python class using ``Col[T]`` type hints:
     For the best editor experience, import backend-specific typing shims:
 
     * Pandas: ``from proteusframe.typing.pandas import Col, Index``
-    * Polars: ``from proteusframe.typing.polars import Col, Index``
+    * Polars eager: ``from proteusframe.typing.polars_eager import Col, Index``
+    * Polars lazy: ``from proteusframe.typing.polars_lazy import Col, Index``
 
-    The generic ``from proteusframe.typing import Col`` also works and now preserves
-    the inner type parameter ``T`` for static type checkers.
+    The generic ``from proteusframe.typing import Col`` also works and preserves the
+    inner type parameter ``T`` for schema annotations.
+
+    **Important typing note:** Pandas has mature type stubs, so type checkers can often
+    treat attribute accessors like ``obj.amount`` as ``pd.Series[float]``.
+    Polars and Narwhals do not currently expose fully generic ``Series[T]`` / ``Expr[T]``
+    types upstream, so type checkers typically see ``pl.Series`` / ``pl.Expr`` / ``nw.Series``
+    (inner type is best-effort today).
 
 .. code-block:: python
 
@@ -54,11 +64,11 @@ Define your DataFrame schema as a Python class using ``Col[T]`` type hints:
 Loading Data
 ------------
 
-**With Pandas:**
+**With Pandas (using base ProteusFrame):**
 
 .. code-block:: python
 
-    # From a DataFrame
+    # From a DataFrame (defaults to pandas)
     df = pd.DataFrame({...})
     customers = Customer(df)
 
@@ -72,21 +82,36 @@ Loading Data
         ...
     })
 
-**With Polars:**
+**With Polars (recommended: use ProteusFramePolars):**
 
 .. code-block:: python
 
     import polars as pl
+    from proteusframe import ProteusFramePolars, Field
+    from proteusframe.typing.polars_eager import Col
+
+    # Define schema with backend-specific class
+    class Customer(ProteusFramePolars):  # Explicitly uses Polars
+        customer_id: Col[int] = Field(unique=True)
+        name: Col[str]
+        ...
 
     # From a Polars DataFrame
     df = pl.DataFrame({...})
-    customers = Customer(df)  # Automatically uses Polars backend
+    customers = Customer(df)  # Uses Polars backend
 
-    # From a CSV file
-    df = pl.read_csv("customers.csv")
-    customers = Customer(df)
+**Alternative: Use base ProteusFrame with backend parameter:**
 
-The same schema class works with both backends. Backend detection is automatic.
+.. code-block:: python
+
+    from proteusframe import ProteusFrame
+
+    class Customer(ProteusFrame):  # Defaults to pandas
+        ...
+
+    # Explicitly specify polars
+    df = pl.DataFrame({...})
+    customers = Customer(df, backend="polars")
 
 
 Type-Safe Access
@@ -98,8 +123,9 @@ Type-Safe Access
     print(customers.name)
     print(customers.age.mean())
 
-    # Filter with type safety
-    young = customers.pf_filter(customers.age < 30)
+    # Filter using the backend's native API, then re-wrap
+    young_df = customers.pf_data[customers.age < 30]
+    young = Customer(young_df, validate=False)
 
 
 Validation (Powered by Pandera)
