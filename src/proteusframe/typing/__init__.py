@@ -18,8 +18,14 @@ their upstream libraries do not currently expose fully generic ``Series[T]``
 / ``Expr[T]`` types.
 """
 
+import sys
 from datetime import date, datetime
-from typing import TYPE_CHECKING, Generic, TypeAlias, TypeVar
+from typing import TYPE_CHECKING, Generic, TypeVar
+
+if sys.version_info >= (3, 10):
+    from typing import TypeAlias
+else:
+    from typing_extensions import TypeAlias
 
 import pandas as pd
 
