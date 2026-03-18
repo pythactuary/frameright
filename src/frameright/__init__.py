@@ -1,27 +1,17 @@
 """
-ProteusFrame: A lightweight Object-DataFrame Mapper (ODM).
+FrameRight: A lightweight Object-DataFrame Mapper (ODM).
 
 Provides type-safe DataFrame wrappers with runtime validation (via Pandera),
 IDE-friendly autocomplete, and Pydantic-style field constraints.
 Supports Pandas, Polars, and other DataFrame backends.
 """
 
-from .backends.registry import get_backend, register_backend
-from .core import (
-    Field,
-    FieldInfo,
-    ProteusFrame,
-    ProteusFrameNarwhals,
-    ProteusFrameNarwhalsLazy,
-    ProteusFramePandas,
-    ProteusFramePolars,
-    ProteusFramePolarsLazy,
-)
+from .core import Field, FieldInfo
 from .exceptions import (
     ConstraintViolationError,
     MissingColumnError,
-    ProteusFrameError,
     SchemaError,
+    StructFrameError,
     TypeMismatchError,
     ValidationError,
 )
@@ -29,22 +19,14 @@ from .typing import Col, Index
 
 __version__ = "0.3.0"
 __all__ = [
-    "ProteusFrame",
-    "ProteusFramePandas",
-    "ProteusFramePolars",
-    "ProteusFrameNarwhals",
-    "ProteusFramePolarsLazy",
-    "ProteusFrameNarwhalsLazy",
     "Field",
     "FieldInfo",
     "Col",
     "Index",
-    "ProteusFrameError",
+    "StructFrameError",
     "SchemaError",
     "ValidationError",
     "TypeMismatchError",
     "ConstraintViolationError",
     "MissingColumnError",
-    "get_backend",
-    "register_backend",
 ]

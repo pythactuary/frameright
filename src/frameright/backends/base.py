@@ -9,7 +9,7 @@ from typing import Any, Dict, List, Optional, Type
 class BackendAdapter(ABC):
     """Abstract interface that every DataFrame backend must implement.
 
-    ProteusFrame delegates all backend-specific operations (column access,
+    Schema delegates all backend-specific operations (column access,
     dtype inspection, validation, coercion, etc.) to a concrete adapter.
     """
 
@@ -150,16 +150,6 @@ class BackendAdapter(ABC):
     # ------------------------------------------------------------------
 
     @abstractmethod
-    def from_dict(self, data: Dict[str, list]) -> Any:
-        """Create a DataFrame from a dictionary of lists."""
-        ...
-
-    @abstractmethod
-    def from_records(self, records: List[dict]) -> Any:
-        """Create a DataFrame from a list of row dictionaries."""
-        ...
-
-    @abstractmethod
     def read_csv(self, path: str, **kwargs: Any) -> Any:
         """Read a CSV file into a DataFrame."""
         ...
@@ -176,16 +166,18 @@ class BackendAdapter(ABC):
     @abstractmethod
     def build_pandera_schema(
         self,
-        pf_schema: Dict[str, dict],
+        fr_schema: Dict[str, dict],
         df: Optional[Any] = None,
         check_types: bool = True,
+        strict: bool = False,
     ) -> Any:
-        """Build a Pandera DataFrameSchema from the parsed ProteusFrame schema.
+        """Build a Pandera DataFrameSchema from the parsed Schema schema.
 
         Args:
-            pf_schema: The ``_pf_schema`` dict from a ProteusFrame subclass.
+            fr_schema: The ``_fr_schema`` dict from a Schema subclass.
             df: Optional native dataframe (used by narwhals to detect backend type).
             check_types: Whether to include dtype checks.
+            strict: If True, reject DataFrames with columns not in the schema.
 
         Returns:
             A ``pandera.DataFrameSchema`` instance for this backend.
@@ -199,7 +191,7 @@ class BackendAdapter(ABC):
         pandera_schema: Any,
         lazy: bool = True,
     ) -> None:
-        """Run Pandera validation and translate errors into ProteusFrame exceptions.
+        """Run Pandera validation and translate errors into Schema exceptions.
 
         Args:
             df: The DataFrame to validate.
@@ -225,19 +217,6 @@ class BackendAdapter(ABC):
         nullable: bool = True,
     ) -> Any:
         """Coerce a single column to match *inner_type*. Returns the (possibly new) DataFrame."""
-        ...
-
-    # ------------------------------------------------------------------
-    # Example data generation
-    # ------------------------------------------------------------------
-
-    @abstractmethod
-    def generate_example_data(
-        self,
-        pf_schema: Dict[str, dict],
-        nrows: int = 3,
-    ) -> Any:
-        """Generate a DataFrame with dummy data matching the schema."""
         ...
 
     # ------------------------------------------------------------------

@@ -14,7 +14,7 @@ test:
 	pytest tests/
 
 coverage:
-	pytest tests/ --cov=src/structframe --cov-report=term --cov-report=xml --cov-report=html
+	pytest tests/ --cov=src/frameright --cov-report=term --cov-report=xml --cov-report=html
 	@echo ""
 	@echo "Coverage report saved to:"
 	@echo "  - Terminal output above"
@@ -23,7 +23,7 @@ coverage:
 
 badge:
 	@echo "Generating coverage badge..."
-	pytest tests/ --cov=src/structframe --cov-report=xml -q
+	pytest tests/ --cov=src/frameright --cov-report=xml -q
 	genbadge coverage -i coverage.xml -o coverage-badge.svg
 	@echo "✓ Coverage badge generated: coverage-badge.svg"
 
@@ -40,7 +40,7 @@ install:
 	pip install -e ".[dev,polars]"
 
 lint:
-	mypy src/structframe
+	pyright src/frameright
 	ruff check src/ tests/
 
 format:

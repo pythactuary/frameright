@@ -4,14 +4,13 @@
 
 from typing import Optional
 
+import pandas as pd
 import polars as pl
 
-from proteusframe import Field
-from proteusframe import ProteusFramePolars as ProteusFrame
-from proteusframe.typing.polars import Col
+from frameright.polars.eager import Col, Field, Schema
 
 
-class OrderData(ProteusFrame):
+class OrderData(Schema):
     """Schema for e-commerce order data."""
 
     order_id: Col[int] = Field(unique=True)
@@ -39,13 +38,14 @@ polars_df = pl.DataFrame(
 # Same schema class, different backend - completely automatic!
 orders = OrderData(polars_df)
 print(f"✓ Created OrderData with {len(orders)} rows")
-print(f"✓ Backend: {type(orders.pf_data ).__name__}")
+print(f"✓ Backend: {type(orders.fr_data).__name__}")
 
 # Same operations work seamlessly
 orders.revenue = orders.item_price * orders.quantity_sold
 total_revenue_polars = orders.revenue.sum()
 print(f"✓ Total Revenue: ${total_revenue_polars:,.2f}")
 total_revenue_by_customer = (
-    orders.pf_data.group_by(orders.customer_id.name).agg(orders.revenue.name).sum()
+    orders.fr_data.group_by(orders.customer_id.name).agg(orders.revenue.name).sum()
 )
+print(f"✓ Total Revenue by Customer:\n{total_revenue_by_customer}")
 print(f"✓ Total Revenue by Customer:\n{total_revenue_by_customer}")

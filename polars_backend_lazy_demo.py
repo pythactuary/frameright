@@ -1,7 +1,7 @@
 """
-ProteusFrame Polars Lazy Demo
+FrameRight Polars Lazy Demo
 
-Demonstrates ProteusFrame's backend support for Polars Lazy (pl.Expr):
+Demonstrates FrameRight's backend support for Polars Lazy (pl.Expr):
 - Uses Col from polars_lazy for static typing and IDE autocomplete
 - All columns are pl.Expr, supporting lazy polars methods
 """
@@ -10,12 +10,11 @@ from typing import Optional
 
 import polars as pl
 
-from proteusframe import Field
-from proteusframe import ProteusFramePolarsLazy as ProteusFrame
-from proteusframe.typing.polars_lazy import Col
+from frameright import Field
+from frameright.polars.lazy import Col, Schema
 
 
-class Sales(ProteusFrame):
+class Sales(Schema):
     """Sales data schema for Polars Lazy (pl.Expr)."""
 
     customer: Col[str]
@@ -32,7 +31,7 @@ lazy_df = pl.DataFrame(
 ).lazy()
 
 sales = Sales(lazy_df)
-print(f"✓ Backend: {sales.pf_backend.name}")
+print(f"✓ Backend: {sales.fr_backend.name}")
 print(f"✓ Column type: {type(sales.revenue)}")
 print(f"✓ Is pl.Expr?: {hasattr(sales.revenue, 'alias')}")
 
@@ -42,6 +41,5 @@ print(f"✓ Total revenue expr (lazy .sum()): {total_revenue_expr}")
 
 # Modify column with polars lazy operations
 sales.profit = sales.revenue * 0.3  # pl.Expr arithmetic
-print(f"✓ Computed profit expr (pl.Expr): {sales.profit}")
 print(f"✓ Computed profit expr (pl.Expr): {sales.profit}")
 print(f"✓ Computed profit expr (pl.Expr): {sales.profit}")

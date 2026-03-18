@@ -2,11 +2,11 @@ from __future__ import annotations
 
 import pandas as pd
 
-from proteusframe import ProteusFrame
-from proteusframe.typing import Col
+from frameright.pandas import Schema
+from frameright.typing import Col
 
 
-class Example(ProteusFrame):
+class Example(Schema):
     a: Col[int]
     b: Col[float]
 
@@ -24,4 +24,6 @@ ex = Example(df, validate=False)
 
 # With pandas stubs installed, attribute accessors type-check as pd.Series[T].
 needs_int(ex.a)
+needs_float(ex.b)
+needs_float(ex.b)
 needs_float(ex.b)

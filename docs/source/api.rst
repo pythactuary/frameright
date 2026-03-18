@@ -4,7 +4,7 @@ API Reference
 Core
 ----
 
-.. automodule:: proteusframe.core
+.. automodule:: frameright.core
    :members:
    :undoc-members:
    :show-inheritance:
@@ -13,15 +13,15 @@ Core
 Typing
 ------
 
-.. automodule:: proteusframe.typing
+.. automodule:: frameright.typing
    :members:
    :undoc-members:
 
-.. automodule:: proteusframe.typing.pandas
+.. automodule:: frameright.typing.pandas
    :members:
    :undoc-members:
 
-.. automodule:: proteusframe.typing.polars
+.. automodule:: frameright.typing.polars
    :members:
    :undoc-members:
 
@@ -29,7 +29,7 @@ Typing
 Exceptions
 ----------
 
-.. automodule:: proteusframe.exceptions
+.. automodule:: frameright.exceptions
    :members:
    :undoc-members:
    :show-inheritance:

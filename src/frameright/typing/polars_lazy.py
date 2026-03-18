@@ -1,8 +1,8 @@
-"""Polars lazy mode (LazyFrame) types for ProteusFrame.
+"""Polars lazy mode (LazyFrame) types for Schema.
 
-Use these imports when your ProteusFrame subclass wraps a **Polars LazyFrame**:
+Use these imports when your Schema subclass wraps a **Polars LazyFrame**:
 
-    from proteusframe.typing.polars_lazy import Col
+    from frameright.typing.polars_lazy import Col
 
 At type-check time ``Col[T]`` resolves to ``pl.Expr`` so that:
 
@@ -12,7 +12,7 @@ At type-check time ``Col[T]`` resolves to ``pl.Expr`` so that:
     so type checkers generally treat the runtime value as ``pl.Expr`` (inner type is best-effort).
 
 At runtime ``Col`` is identical to the generic sentinel from
-``proteusframe.typing`` (used by ``__init_subclass__`` for schema parsing).
+``Schema.typing`` (used by ``__init_subclass__`` for schema parsing).
 
 **Important**: When using LazyFrame:
 - Column access returns ``pl.Expr`` (lazy expressions)
@@ -24,7 +24,7 @@ For **DataFrame** (eager) support, use ``polars_eager`` instead.
 
 from typing import TYPE_CHECKING, Generic, TypeVar
 
-from proteusframe.typing import Col as _RuntimeCol
+from frameright.typing import Col as _RuntimeCol
 
 T = TypeVar("T")
 
@@ -32,7 +32,7 @@ if TYPE_CHECKING:
     import polars as pl
 
     class ColTemp(Generic[T], pl.Expr):  # type: ignore[misc]
-        """Polars Expr type for ProteusFrame lazy schemas."""
+        """Polars Expr type for Schema lazy schemas."""
 
         ...
 

@@ -24,8 +24,7 @@ def _run_mypy(args: list[str], *, mypy_path: str | None = None) -> tuple[str, st
     combined = (out + "\n" + err).lower()
     if (
         'library stubs not installed for "pandas"' in combined
-        or 'cannot find implementation or library stub for module named "pandas"'
-        in combined
+        or 'cannot find implementation or library stub for module named "pandas"' in combined
     ):
         pytest.skip(
             "pandas stubs not installed; install dev deps (pandas-stubs) to run static typing tests"
@@ -67,6 +66,6 @@ def test_mypy_rejects_mismatched_col_inner_types() -> None:
     assert status != 0, "mypy should fail when Col[T] inner types are mismatched"
 
     combined = (out + "\n" + err).lower()
-    assert (
-        "incompatible types" in combined or "incompatible type" in combined
-    ), f"unexpected mypy output. out=\n{out}\nerr=\n{err}"
+    assert "incompatible types" in combined or "incompatible type" in combined, (
+        f"unexpected mypy output. out=\n{out}\nerr=\n{err}"
+    )

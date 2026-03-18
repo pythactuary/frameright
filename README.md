@@ -1,20 +1,20 @@
-# ProteusFrame
+# FrameRight
 
 <p align="center">
-  <img src="logo-banner.svg" alt="ProteusFrame - Type-Safe, Multi-Backend DataFrames" width="100%">
+  <img src="logo-banner.svg" alt="FrameRight - Type-Safe, Multi-Backend DataFrames" width="100%">
 </p>
 
 <p align="center">
-  <a href="https://github.com/yourusername/proteusframe/actions"><img src="https://github.com/yourusername/proteusframe/workflows/Tests/badge.svg" alt="Tests"></a>
+  <a href="https://github.com/yourusername/FrameRight/actions"><img src="https://github.com/yourusername/FrameRight/workflows/Tests/badge.svg" alt="Tests"></a>
   <a href="./coverage-badge.svg"><img src="./coverage-badge.svg" alt="Coverage"></a>
-  <a href="https://badge.fury.io/py/proteusframe"><img src="https://badge.fury.io/py/proteusframe.svg" alt="PyPI version"></a>
-  <a href="https://pypi.org/project/proteusframe/"><img src="https://img.shields.io/pypi/pyversions/proteusframe.svg" alt="Python Versions"></a>
+  <a href="https://badge.fury.io/py/FrameRight"><img src="https://badge.fury.io/py/FrameRight.svg" alt="PyPI version"></a>
+  <a href="https://pypi.org/project/FrameRight/"><img src="https://img.shields.io/pypi/pyversions/FrameRight.svg" alt="Python Versions"></a>
   <a href="https://opensource.org/licenses/MIT"><img src="https://img.shields.io/badge/License-MIT-yellow.svg" alt="License: MIT"></a>
 </p>
 
 **A lightweight Object-DataFrame Mapper (ODM) for Pandas, Polars, and Narwhals.** Define your DataFrame schema as a Python class with typed attributes. Get full IDE autocomplete, catch column typos and type errors at edit-time with Pylance, Pyright, or mypy, validate data at runtime with production-grade Pandera validation, and write self-documenting data contracts — all while keeping native backend speed and APIs.
 
-**Native Backend Support**: Works with **Pandas**, **Polars**, and **Narwhals** DataFrames. Column properties return native Series types (`pd.Series`, `pl.Series`, or `nw.Series`), so you get the full native API for your backend. ProteusFrame is an Object DataFrame Mapper — it provides typed attribute access to columns, not DataFrame abstraction.
+**Native Backend Support**: Works with **Pandas**, **Polars**, and **Narwhals** DataFrames. Column properties return native Series types (`pd.Series`, `pl.Series`, or `nw.Series`), so you get the full native API for your backend. FrameRight is an Object DataFrame Mapper — it provides typed attribute access to columns, not DataFrame abstraction.
 
 **Multi-Backend or Backend-Agnostic**: Choose your style:
 
@@ -22,7 +22,7 @@
 - Use **Polars** → get `pl.Series` with polars methods
 - Use **Narwhals** → get `nw.Series` for backend-agnostic code
 
-**Powered by Pandera**: Runtime validation uses [Pandera](https://pandera.readthedocs.io/) under the hood, giving you production-tested constraint checking with helpful error messages. ProteusFrame wraps Pandera's validation in a cleaner API while adding IDE-first typed column access.
+**Runtime Validation Powered by Pandera**: Runtime validation uses [Pandera](https://pandera.readthedocs.io/) under the hood, giving you production-tested constraint checking with helpful error messages. FrameRight wraps Pandera's validation in a clean API while adding IDE-first typed column access.
 
 ---
 
@@ -50,14 +50,14 @@ def calculate_revenue(df: pd.DataFrame) -> pd.DataFrame:
 
 ## The Solution
 
-ProteusFrame lets you define your DataFrame schema as a standard Python class. Columns become real attributes with type hints and docstrings. Your IDE and static type checkers (Pylance, Pyright, mypy) treat them like any other Python class — meaning you get full autocomplete, hover documentation, and **compile-time error checking for column names and types**.
+FrameRight lets you define your DataFrame schema as a standard Python class. Columns become real attributes with type hints and docstrings. Your IDE and static type checkers (Pylance, Pyright, mypy) treat them like any other Python class — meaning you get full autocomplete, hover documentation, and **edit-time error checking for column names and types**.
 
 ```python
-from proteusframe import ProteusFrame, Field
-from proteusframe.typing import Col
+from frameright import Schema, Field
+from frameright.typing import Col
 from typing import Optional
 
-class Orders(ProteusFrame):
+class Orders(Schema):
     item_price: Col[float]
     """The price per unit of the item."""
     quantity_sold: Col[int] = Field(ge=0)
@@ -86,13 +86,13 @@ def calculate_revenue(orders: Orders) -> RevenueResult:
 
 ## What Static Type Checkers Catch — Without Running Your Code
 
-Because ProteusFrame columns are real class attributes, **static type checkers catch errors at edit-time**, just as they would for any Python class. This works out of the box with:
+Because Schema columns are real class attributes, **static type checkers catch errors at edit-time**, just as they would for any Python class. This works out of the box with:
 
 - **Pylance / Pyright** (VS Code)
 - **mypy** (CI / command line)
 - **PyCharm's built-in checker**
 
-No plugins, no extensions, no configuration. If your type checker can analyse a Python class, it can analyse a ProteusFrame:
+No plugins, no extensions, no configuration. If your type checker can analyse a Python class, it can analyse a Schema:
 
 ```python
 orders = Orders(df)
@@ -117,7 +117,7 @@ process(wrong_df)   # No error. It's just a DataFrame.
 # Rename a column? Good luck with find-and-replace across 50 files.
 ```
 
-| Capability                           | Standard Pandas     | ProteusFrame                                   |
+| Capability                           | Standard Pandas     | FrameRight                                     |
 | ------------------------------------ | ------------------- | ---------------------------------------------- |
 | Autocomplete on column names         | No                  | Yes                                            |
 | Errors on typos (before running)     | No                  | Yes — via Pylance/mypy                         |
@@ -126,7 +126,7 @@ process(wrong_df)   # No error. It's just a DataFrame.
 | Find all references to a column      | No                  | Yes                                            |
 | Type-safe function signatures        | No (`pd.DataFrame`) | Yes (`Orders` vs `Revenue` are distinct types) |
 
-**This is ProteusFrame's core value.** It turns the entire Python static analysis ecosystem — Pylance, Pyright, mypy, PyCharm — into your DataFrame tooling layer. No plugins required. If your type checker can analyse a Python class, it can analyse a ProteusFrame.
+**This is FrameRight's core value.** It turns the entire Python static analysis ecosystem — Pylance, Pyright, mypy, PyCharm — into your DataFrame tooling layer. No plugins required. If your type checker can analyse a Python class, it can analyse a Schema.
 
 ---
 
@@ -134,42 +134,30 @@ process(wrong_df)   # No error. It's just a DataFrame.
 
 ```bash
 # For Pandas backend (default, always installed)
-pip install proteusframe
+pip install frameright
 
 # For Polars backend (optional)
-pip install proteusframe[polars]
+pip install frameright[polars]
 
 # For Narwhals backend-agnostic support (optional)
-pip install proteusframe[narwhals]
+pip install frameright[narwhals]
 ```
 
 **Backend Selection** — Choose your approach:
 
-**Option 1: Backend-Specific Classes (Recommended for Type Safety)**
-
 ```python
-from proteusframe import ProteusFramePandas, ProteusFramePolars, ProteusFramePolarsLazy
+from frameright.pandas import Schema
 
-class Sales(ProteusFramePandas):    # Always uses pandas
+class Sales(Schema):    # Always uses pandas
     revenue: Col[float]
 
-class Sales(ProteusFramePolars):     # Always uses polars eager
+from frameright.polars.eager import Schema
+class Sales(Schema):     # Always uses polars eager (pl.DataFrame)
     revenue: Col[float]
 
-class Sales(ProteusFramePolarsLazy): # Always uses polars lazy
+from frameright.polars.lazy import Schema
+class Sales(Schema): # Always uses polars lazy (pl.LazyFrame)
     revenue: Col[float]
-```
-
-**Option 2: Base ProteusFrame (Defaults to Pandas)**
-
-```python
-from proteusframe import ProteusFrame
-
-class Sales(ProteusFrame):  # Defaults to pandas backend
-    revenue: Col[float]
-
-sales = Sales(df)                        # Uses pandas (default)
-sales = Sales(polars_df, backend="polars")  # Explicitly use polars
 ```
 
 **What you get**:
@@ -187,12 +175,12 @@ sales = Sales(polars_df, backend="polars")  # Explicitly use polars
 
 ```python
 import pandas as pd
-from proteusframe import ProteusFrame, Field
-from proteusframe.typing import Col
+from frameright import Schema, Field
+from frameright.typing import Col
 from typing import Optional
 
 # 1. Define your schema
-class OrderData(ProteusFrame):
+class OrderData(Schema):
     order_id: Col[int] = Field(unique=True)
     """Unique order identifier."""
     customer_id: Col[int]
@@ -218,16 +206,15 @@ orders.revenue = orders.item_price * orders.quantity_sold
 total = orders.revenue.sum()
 ```
 
-**With Polars (recommended: use backend-specific class):**
+**With Polars (eager - recommended for interactive use):**
 
 ```python
 import polars as pl
-from proteusframe import ProteusFramePolars, Field  # Backend-specific class
-from proteusframe.typing.polars_eager import Col  # Polars eager (Series) type hints
+from frameright.polars.eager import Schema, Col, Field
 from typing import Optional
 
 # Same schema definition (for brevity, showing abbreviated version)
-class OrderData(ProteusFramePolars):  # Explicitly uses Polars backend
+class OrderData(Schema):  # Explicitly uses Polars eager backend
     order_id: Col[int] = Field(unique=True)
     item_price: Col[float] = Field(ge=0)
     quantity_sold: Col[int] = Field(ge=1)
@@ -240,22 +227,10 @@ raw_df = pl.DataFrame({
     'quantity_sold': [2, 1, 5]
 })
 
-# Uses Polars backend (set by ProteusFramePolars base class)
+# Uses Polars eager backend (set by importing from frameright.polars.eager)
 orders = OrderData(raw_df)
 orders.revenue = orders.item_price * orders.quantity_sold  # pl.Series operations
 total = orders.revenue.sum()  # Polars .sum() method
-```
-
-**Alternative: Use base ProteusFrame with backend parameter:**
-
-```python
-from proteusframe import ProteusFrame  # Base class
-
-class OrderData(ProteusFrame):  # Defaults to pandas
-    ...
-
-# Explicitly specify polars backend
-orders = OrderData(raw_df, backend="polars")
 ```
 
 **With Narwhals (backend-agnostic code):**
@@ -263,12 +238,11 @@ orders = OrderData(raw_df, backend="polars")
 ```python
 import narwhals as nw
 import pandas as pd  # or polars, duckdb, etc.
-from proteusframe import ProteusFrameNarwhals, Field  # Backend-specific class
-from proteusframe.typing.narwhals import Col  # Narwhals-specific type hints
+from frameright.narwhals.eager import Schema, Col, Field
 from typing import Optional
 
 # Schema with narwhals types
-class OrderData(ProteusFrameNarwhals):  # Explicitly uses Narwhals backend
+class OrderData(Schema):  # Uses Narwhals backend
     order_id: Col[int] = Field(unique=True)
     item_price: Col[float] = Field(ge=0)
     quantity_sold: Col[int] = Field(ge=1)
@@ -286,39 +260,75 @@ total = orders.revenue.sum()  # Backend-agnostic .sum()
 
 **Type Hints Matter**: Use the appropriate `Col` import for your backend to get IDE autocomplete:
 
-- `from proteusframe.typing import Col` → pandas methods (default)
-- `from proteusframe.typing.polars_eager import Col` → polars eager (Series) methods
-- `from proteusframe.typing.polars_lazy import Col` → polars lazy (Expr) methods
-- `from proteusframe.typing.narwhals import Col` → narwhals methods
+- `from frameright.typing import Col` → pandas methods (default)
+- `from frameright.typing.polars_eager import Col` → polars eager (Series) methods
+- `from frameright.typing.polars_lazy import Col` → polars lazy (Expr) methods
+- `from frameright.typing.narwhals import Col` → narwhals methods
 
 **Typing note (important):** Pandas has mature type stubs, so type checkers can treat attribute accessors like `orders.amount` as `pd.Series[float]` in many cases.
-Polars and Narwhals do not currently expose fully generic `Series[T]` / `Expr[T]` types upstream, so type checkers typically see `pl.Series` / `pl.Expr` / `nw.Series` (inner type is best-effort today). ProteusFrame still gives you safe column _names_, schema-level `Col[T]` annotations, and IDE autocomplete.
+Polars and Narwhals do not currently expose fully generic `Series[T]` / `Expr[T]` types upstream, so type checkers typically see `pl.Series` / `pl.Expr` / `nw.Series` (inner type is best-effort today). FrameRight still gives you safe column _names_, schema-level `Col[T]` annotations, and IDE autocomplete.
 
-**Type Safety:** Backend-specific classes like `ProteusFramePandas` give you the strongest type guarantees. The base `ProteusFrame` is more flexible but defaults to pandas for backward compatibility.
+**Type Safety:** Explicit imports from backend modules like `frameright.pandas`, `frameright.polars.eager`, or `frameright.polars.lazy` give you the strongest type guarantees. Each backend module provides its own `Schema` class optimized for that backend.
 
 **Using Native DataFrame Operations:**
 
-ProteusFrame is an **Object DataFrame Mapper** — it provides typed attribute access to columns, not DataFrame abstraction. Use native DataFrame methods for operations:
+Schema is an **Object DataFrame Mapper** — it provides typed attribute access to columns, not DataFrame abstraction. Use native DataFrame methods for operations:
 
 ```python
 # Filtering - use native methods
-filtered_orders = OrderData(orders.pf_data[orders.revenue > 100], validate=False)  # Pandas
-filtered_orders = OrderData(orders.pf_data.filter(orders.revenue > 100), validate=False)  # Polars
+filtered_orders = OrderData(orders.fr_data[orders.revenue > 100], validate=False)  # Pandas
+filtered_orders = OrderData(orders.fr_data.filter(orders.revenue > 100), validate=False)  # Polars
 
 # Exporting - use native methods
-orders.pf_data.to_csv('output.csv')        # Pandas
-orders.pf_data.write_csv('output.csv')     # Polars
+orders.fr_data.to_csv('output.csv')        # Pandas
+orders.fr_data.write_csv('output.csv')     # Polars
 
 # Grouping - use native methods
-orders.pf_data.groupby(orders.customer_id).sum()  # Pandas
-orders.pf_data.group_by(orders.customer_id).sum()  # Polars
+orders.fr_data.groupby(orders.customer_id).sum()  # Pandas
+orders.fr_data.group_by(orders.customer_id).sum()  # Polars
 
 # LazyFrame collection - use native methods
 lazy_orders = OrderData(pl.scan_csv('orders.csv'))  # Still lazy
-result = lazy_orders.pf_data.collect()               # Executes query plan
+result = lazy_orders.fr_data.collect()               # Executes query plan
 ```
 
-The `pf_data` property gives you direct access to the underlying DataFrame.
+The `fr_data` property gives you direct access to the underlying DataFrame.
+
+---
+
+## Performance
+
+FrameRight is designed to add type safety with minimal overhead:
+
+- **Memory**: 48 bytes per Schema instance — same whether wrapping 1,000 or 1,000,000 rows
+- **Column access**: Adds ~0.2 microseconds per property access (negligible)
+- **Construction**: Sub-millisecond without validation; 25-51ms for 100k rows with validation
+- **Operations**: Run at native backend speed — no overhead once you have the Series
+
+**Detailed benchmarks** (100,000 rows):
+
+| Metric                         | Raw DataFrame | FrameRight Wrapper | Overhead         |
+| ------------------------------ | ------------- | ------------------ | ---------------- |
+| Memory (100k rows)             | 3.05 MB       | 3.05 MB            | 48 bytes (0.00%) |
+| Single column access           | 9.36 μs       | 9.59 μs            | +0.23 μs         |
+| Column operation (`sum()`)     | 55.3 μs       | 55.3 μs            | ~0 μs            |
+| Construction (no validation)   | —             | 0.3 μs             | —                |
+| Construction (with validation) | —             | 13-51 ms           | —                |
+
+**Polars backend** (100,000 rows):
+
+| Metric                         | Polars  | FrameRight Wrapper | Overhead |
+| ------------------------------ | ------- | ------------------ | -------- |
+| Construction (with validation) | —       | 5.3 ms             | —        |
+| Column access                  | 0.43 μs | 0.64 μs            | +0.21 μs |
+
+Polars is ~5x faster than Pandas for validation and ~20x faster for column access.
+
+**Best practice**: Validate once at the entry point (`validate=True`), then use `validate=False` for internal operations. This gives you type safety and validation guarantees without paying the validation cost repeatedly.
+
+**Note**: These measurements are per-instance overhead (the cost of each Schema wrapper). There is also a one-time cost to import FrameRight and its dependencies (Pandera, etc.), which is amortized across all Schema instances.
+
+See [tests/test_performance.py](tests/test_performance.py) for the complete benchmark suite.
 
 ---
 
@@ -346,18 +356,18 @@ The `pf_data` property gives you direct access to the underlying DataFrame.
 - **Native backend support** — works with Pandas, Polars, and Narwhals DataFrames transparently
 - **Native Series types** — column properties return native types: `pd.Series`, `pl.Series`, or `nw.Series`
 - **Full backend API** — use native methods on columns (e.g., `orders.revenue.mean()` uses pandas/polars/narwhals methods)
-- **Object DataFrame Mapper** — ProteusFrame maps typed attributes to columns, it doesn't abstract the DataFrame
+- **Object DataFrame Mapper** — Schema maps typed attributes to columns, it doesn't abstract the DataFrame
 - **Column aliasing** — map clean attribute names to messy column names with `Field(alias="UGLY_COL_NAME")`
 - **Optional columns** — `Optional[Col[T]]` for columns that may not exist; returns `None` safely
-- **Type coercion** — `pf_coerce(messy_df)` auto-converts dtypes to match the schema
-- **Schema introspection** — `pf_schema_info()` returns a list of dicts describing the schema
+- **Type coercion** — `coerce=True` in constructor auto-converts dtypes to match the schema
+- **Schema introspection** — `fr_schema_info()` returns a list of dicts describing the schema
 - **Native backend speed** — column access maps directly to vectorized operations (pandas, polars, or narwhals)
 
 ---
 
 ## How It Compares
 
-|                                 | **ProteusFrame**                                                  | **Pandera**                                                              | **Pydantic v2**                  |
+|                                 | **Schema**                                                        | **Pandera**                                                              | **Pydantic v2**                  |
 | ------------------------------- | ----------------------------------------------------------------- | ------------------------------------------------------------------------ | -------------------------------- |
 | **Purpose**                     | Typed DataFrame access (ODM) + validation                         | DataFrame validation                                                     | Row-oriented data validation     |
 | **IDE autocomplete on columns** | Yes                                                               | No — validator only, not an accessor                                     | N/A — no column concept          |
@@ -368,9 +378,9 @@ The `pf_data` property gives you direct access to the underlying DataFrame.
 | **Backend**                     | Pandas, Polars, Narwhals                                          | Pandas, Polars, PySpark, Modin, Dask                                     | Backend-agnostic (row-oriented)  |
 | **Developer experience**        | Pydantic-like API + strong typing                                 | Schema-centric, validation-focused                                       | Models over DataFrames           |
 
-**ProteusFrame uses Pandera for validation.** Think of ProteusFrame as a developer-friendly wrapper around Pandera that adds IDE-first typed column access and a Pydantic-like API. You get the best of both worlds: production-tested validation from Pandera plus the ergonomics of typed Python classes.
+**Schema uses Pandera for validation.** Think of FrameRight as a developer-friendly wrapper around Pandera that adds IDE-first typed column access and a Pydantic-like API. You get the best of both worlds: production-tested validation from Pandera plus the ergonomics of typed Python classes.
 
-For advanced Pandera features (custom checks, hypothesis testing, lazy error collection), use Pandera directly alongside ProteusFrame (for example by validating `obj.pf_data` or by applying additional Pandera checks in your pipeline).
+For advanced Pandera features (custom checks, hypothesis testing, lazy error collection), use Pandera directly alongside FrameRight (for example by validating `obj.fr_data` or by applying additional Pandera checks in your pipeline).
 
 ---
 
@@ -384,14 +394,18 @@ Polars is a modern DataFrame library written in Rust that offers significant per
 - **Memory efficiency** — better memory layout and columnar processing
 - **Growing ecosystem** — rapidly becoming the standard for high-performance data processing in Python
 
-ProteusFrame makes it trivial to switch between Pandas and Polars. Define your schema once, and you can use whichever backend fits your needs:
+FrameRight makes it trivial to switch between Pandas and Polars. Define your schema once, and you can use whichever backend fits your needs:
 
 ```python
 # Development: use Pandas for its familiar API and extensive ecosystem
+from frameright.pandas import Schema, Col
+...
 df_pandas = pd.read_csv("data.csv")
 orders = OrderData(df_pandas)
 
 # Production: use Polars for better performance on large datasets
+from frameright.polars import Schema, Col
+....
 df_polars = pl.read_csv("data.csv")
 orders = OrderData(df_polars)  # Same schema, different backend
 ```
@@ -402,15 +416,15 @@ No code changes required. The schema class is backend-agnostic.
 
 [Narwhals](https://narwhals-dev.github.io/narwhals/) is a lightweight compatibility layer that lets you write backend-agnostic DataFrame code. It provides a unified API that works across Pandas, Polars, DuckDB, and more.
 
-**When to use Narwhals with ProteusFrame:**
+**When to use Narwhals with FrameRight:**
 
 - You're building a **library** that needs to work with any DataFrame type
 - You want to write **portable data pipelines** that work unchanged on Pandas, Polars, or DuckDB
 - You need to **switch backends** without rewriting code
 
-**ProteusFrame's Approach to Narwhals:**
+**FrameRight's Approach to Narwhals:**
 
-ProteusFrame is an **Object DataFrame Mapper**, not a DataFrame abstraction layer. This means:
+FrameRight is an **Object DataFrame Mapper**, not a DataFrame abstraction layer. This means:
 
 - **Native backends preferred**: If you're using Pandas, use the PandasBackend and get `pd.Series` with pandas methods
 - **Native backends preferred**: If you're using Polars, use the PolarsBackend and get `pl.Series` with polars methods
@@ -419,18 +433,18 @@ ProteusFrame is an **Object DataFrame Mapper**, not a DataFrame abstraction laye
 ```python
 # Pandas users: get pd.Series with pandas API
 import pandas as pd
-from proteusframe.typing import Col  # defaults to pd.Series[T]
+from frameright.pandas import Col  # defaults to pd.Series[T]
 
 # Polars users: get pl.Series with polars eager API
 import polars as pl
-from proteusframe.typing.polars_eager import Col  # pl.Series (with polars autocomplete)
+from frameright.polars.eager import Col  # pl.Series (with polars autocomplete)
 
 # Backend-agnostic users: get nw.Series with narwhals API
 import narwhals as nw
-from proteusframe.typing.narwhals import Col  # nw.Series (with narwhals autocomplete)
+from frameright.narwhals.eager import Col  # nw.Series (with narwhals autocomplete)
 ```
 
-**The value of ProteusFrame is typed attribute access**, not DataFrame abstraction. Choose the backend that fits your needs, and ProteusFrame gives you typed column access with full IDE support.
+**The value of FrameRight is typed attribute access**, not DataFrame abstraction. Choose the backend that fits your needs, and FrameRight gives you typed column access with full IDE support.
 
 ## Why Pandera?
 
@@ -442,10 +456,10 @@ from proteusframe.typing.narwhals import Col  # nw.Series (with narwhals autocom
 - **Multi-backend** — works with Pandas, Polars, PySpark, Modin, and Dask
 - **Active development** — regular releases and strong community support
 
-ProteusFrame leverages Pandera for all runtime validation, giving you production-grade constraint checking without the boilerplate. You get:
+FrameRight leverages Pandera for all runtime validation, giving you production-grade constraint checking without the boilerplate. You get:
 
 ```python
-class Orders(ProteusFrame):
+class Orders(Schema):
     order_id: Col[int] = Field(unique=True)       # Pandera checks uniqueness
     item_price: Col[float] = Field(ge=0)          # Pandera checks >= 0
     currency: Col[str] = Field(isin=["USD", "EUR"])  # Pandera checks enum
@@ -453,7 +467,7 @@ class Orders(ProteusFrame):
 orders = Orders(df)  # Automatic Pandera validation
 ```
 
-Behind the scenes, ProteusFrame builds a Pandera schema from your class definition and runs validation on construction. You get all of Pandera's power with a cleaner, more Pydantic-like API.
+Behind the scenes, FrameRight builds a Pandera schema from your class definition and runs validation on construction. You get all of Pandera's power with a cleaner, more Pydantic-like API.
 
 ---
 
@@ -462,7 +476,7 @@ Behind the scenes, ProteusFrame builds a Pandera schema from your class definiti
 ### Data Validation & Constraints
 
 ```python
-class RiskProfile(ProteusFrame):
+class RiskProfile(Schema):
     limit: Col[float] = Field(ge=0)
     """Policy limit."""
     premium: Col[float] = Field(gt=0)
@@ -476,7 +490,7 @@ risk = RiskProfile(df)  # Validates immediately
 ### Column Aliasing
 
 ```python
-class LegacyData(ProteusFrame):
+class LegacyData(Schema):
     user_id: Col[int] = Field(alias="USER_ID_V2")
     signup_date: Col[str] = Field(alias="dt_signup_YYYYMMDD")
 
@@ -489,13 +503,13 @@ print(data.user_id)  # Accesses "USER_ID_V2" column
 ```python
 # CSV data where everything is a string
 messy_df = pd.read_csv("data.csv")
-orders = OrderData.pf_coerce(messy_df)  # Auto-converts dtypes
+orders = OrderData(messy_df, coerce=True)  # Auto-converts dtypes
 ```
 
 ### Schema Introspection
 
 ```python
-for col in OrderData.pf_schema_info():
+for col in OrderData.fr_schema_info():
     print(col["attribute"], col["type"], col["required"])
 # order_id     int   True
 # customer_id  int   True
@@ -508,18 +522,18 @@ Returns a list of dicts with keys: `attribute`, `column`, `type`, `required`, `n
 
 For complex operations like `.groupby()`, `.merge()`, or `.melt()`, you need access to a DataFrame object.
 
-ProteusFrame provides an **escape hatche**:
+FrameRight provides an **escape hatche**:
 
-**`pf_data` — Get the underlying dataframe**
+**`fr_data` — Get the underlying dataframe**
 
 ```python
 import narwhals as nw
 
 orders = OrderData(df)
 
-# pf_data returns a narwhals DataFrame — same API for any backend
+# fr_data returns a narwhals DataFrame — same API for any backend
 # Full IDE autocomplete via type stubs, zero-copy wrapper
-nw_df = orders.pf_data
+nw_df = orders.fr_data
 print(nw_df.columns)                    # ['order_id', 'customer_id', 'revenue']
 print(nw_df.schema)                     # Column names → narwhals dtypes
 filtered = nw_df.filter(nw.col('revenue') > 100)
@@ -532,20 +546,20 @@ When working with native DataFrames, you can often pass the **column object itse
 
 ```python
 # No string literals, no `.name` needed
-customer_totals = orders.pf_data.groupby(orders.customer_id).sum()  # Pandas
-customer_totals = orders.pf_data.group_by(orders.customer_id).sum()  # Polars
+customer_totals = orders.fr_data.groupby(orders.customer_id).sum()  # Pandas
+customer_totals = orders.fr_data.group_by(orders.customer_id).sum()  # Polars
 ```
 
 This also respects aliases automatically because the grouping key is derived from the real column:
 
 ```python
-class LegacyData(ProteusFrame):
+class LegacyData(Schema):
     user_id: Col[int] = Field(alias="USER_ID_V2")
     total_spent: Col[float] = Field(alias="TOT_SPEND_USD")
 
 data = LegacyData(df)
 
-by_user = data.pf_data.groupby(data.user_id).sum()  # Pandas
+by_user = data.fr_data.groupby(data.user_id).sum()  # Pandas
 ```
 
 **Benefits:**
@@ -555,18 +569,11 @@ by_user = data.pf_data.groupby(data.user_id).sum()  # Pandas
 - Respects aliases automatically
 - No string literals anywhere in your code
 
-### Generate Example Data
-
-```python
-# For testing and documentation
-example = OrderData.pf_example(nrows=10)
-```
-
 ---
 
 ## Exceptions
 
-ProteusFrame raises specific exceptions for different failure modes:
+FrameRight raises specific exceptions for different failure modes:
 
 | Exception                  | When It's Raised                                                  |
 | -------------------------- | ----------------------------------------------------------------- |
@@ -574,7 +581,7 @@ ProteusFrame raises specific exceptions for different failure modes:
 | `TypeMismatchError`        | A column's dtype doesn't match the type annotation                |
 | `ConstraintViolationError` | A `Field()` constraint is violated (e.g., `ge`, `isin`, `unique`) |
 
-All inherit from `ValidationError` → `ProteusFrameError` → `Exception`.
+All inherit from `ValidationError` → `StructFrameError` → `Exception`.
 
 ---
 
@@ -584,8 +591,8 @@ Pull requests are welcome! If you find a bug or have a feature request, please o
 
 ```bash
 # Development setup
-git clone https://github.com/yourusername/proteusframe.git
-cd proteusframe
+git clone https://github.com/yourusername/frameright.git
+cd frameright
 pip install -e ".[dev,polars]"
 
 # Run tests

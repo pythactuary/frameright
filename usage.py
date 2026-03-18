@@ -1,10 +1,9 @@
 """
-ProteusFrame Usage Examples
+FrameRight Usage Examples
 
-This file demonstrates the key features of ProteusFrame:
-- Multi-backend support (Pandas and Polars)
+This file demonstrates the key features of FrameRight:
+- Type-aware column access with IDE autocomplete
 - Pandera-powered validation with constraints
-- Type-safe column access with IDE autocomplete
 - Backend-agnostic schema definitions
 """
 
@@ -12,11 +11,10 @@ from typing import Optional
 
 import pandas as pd
 
-from proteusframe import Field, ProteusFrame
-from proteusframe.typing import Col
+from frameright.pandas import Col, Field, Schema
 
 
-class OrderData(ProteusFrame):
+class OrderData(Schema):
     """Schema for e-commerce order data."""
 
     order_id: Col[int] = Field(unique=True)
@@ -41,14 +39,15 @@ pandas_df = pd.DataFrame(
     }
 )
 
-# Wrap with ProteusFrame (validates with Pandera on construction)
+# Wrap with Schema (validates with Pandera on construction)
 orders = OrderData(pandas_df)
 print(f"✓ Created OrderData with {len(orders)} rows")
-print(f"✓ Backend: {type(orders.pf_data).__name__}")
+print(f"✓ Backend: {type(orders.fr_data).__name__}")
 
 # Type-safe column access with full IDE autocomplete
 orders.revenue = orders.item_price * orders.quantity_sold
 total_revenue = orders.revenue.sum()
-grouped = orders.pf_data.groupby(orders.customer_id)[[orders.revenue.name]].sum()
-y = orders.pf_data
+grouped = orders.fr_data.groupby(orders.customer_id)[[orders.revenue.name]].sum()
+print(f"✓ Total Revenue: ${total_revenue:,.2f}")
+print(f"✓ Total Revenue: ${total_revenue:,.2f}")
 print(f"✓ Total Revenue: ${total_revenue:,.2f}")

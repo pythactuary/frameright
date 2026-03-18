@@ -1,4 +1,4 @@
-ProteusFrame Documentation
+Schema Documentation
 =========================
 
 Type-safe DataFrame wrapper with runtime validation for production data pipelines.
@@ -9,13 +9,14 @@ Type-safe DataFrame wrapper with runtime validation for production data pipeline
 
    quickstart
    backends
+   performance
    examples
    api
 
-What is ProteusFrame?
+What is Schema?
 --------------------
 
-ProteusFrame provides a Pydantic-like interface for Pandas and Polars DataFrames, enabling:
+Schema provides a Pydantic-like interface for Pandas and Polars DataFrames, enabling:
 
 * **Type-safe column access** with IDE autocomplete
 * **Multi-backend support** — works seamlessly with Pandas and Polars
@@ -31,12 +32,12 @@ Quick Example
 
 .. code-block:: python
 
-    from proteusframe import ProteusFrame, Field
-    from proteusframe.typing import Col
+    from frameright import Schema, Field
+    from frameright.typing import Col
     from typing import Optional
     import pandas as pd
 
-    class Orders(ProteusFrame):
+    class Orders(Schema):
         item_price: Col[float]
         """The price per unit of the item."""
         quantity_sold: Col[int] = Field(ge=0)
@@ -64,7 +65,19 @@ Key Benefits
 * **Powered by Pandera**: Uses the industry-standard validation library for bulletproof runtime checks
 * **Backend-agnostic schemas**: Write once, use with Pandas or Polars
 * **IDE-first design**: Full autocomplete, hover docs, and static error checking
-* **Zero performance overhead**: Direct access to native DataFrame operations
+* **Minimal performance overhead**: Adds only ~0.2 microseconds per column access and 48 bytes of memory
+
+Performance
+-----------
+
+FrameRight is designed for negligible overhead:
+
+* **Memory**: 48 bytes per Schema instance (same for 1k or 1M rows)
+* **Column access**: Adds ~0.2 microseconds per property access
+* **Construction**: Sub-millisecond without validation, 25-51ms for 100k rows with validation
+* **Operations**: Run at native backend speed (pandas/polars/narwhals)
+
+See the :doc:`performance` page for detailed benchmarks and best practices.
 
 
 Indices and tables

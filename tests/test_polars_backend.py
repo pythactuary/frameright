@@ -5,20 +5,22 @@ from typing import Optional
 import polars as pl
 import pytest
 
-from proteusframe import Field, ProteusFrame
-from proteusframe.exceptions import (
+from frameright import Field
+from frameright.exceptions import (
     ConstraintViolationError,
     MissingColumnError,
     TypeMismatchError,
 )
-from proteusframe.typing.polars_eager import Col
+from frameright.polars.eager import Col, Schema
+from frameright.polars.lazy import Col as ColLazy
+from frameright.polars.lazy import Schema as SchemaLazy
 
 # ---------------------------------------------------------------------------
 # Schema Definitions for Testing
 # ---------------------------------------------------------------------------
 
 
-class UserData[T](ProteusFrame[T]):
+class UserData(Schema):
     """Kitchen-sink schema covering all features."""
 
     user_id: Col[int] = Field(unique=True)
@@ -31,10 +33,20 @@ class UserData[T](ProteusFrame[T]):
     lifetime_value: Optional[Col[float]] = Field(ge=0.0)
 
 
-ud = UserData(pl.DataFrame())
+class UserDataLazy(SchemaLazy):
+    """Kitchen-sink lazy schema covering all features."""
+
+    user_id: ColLazy[int] = Field(unique=True)
+    username: ColLazy[str] = Field(min_length=1)
+    is_active: ColLazy[bool]
+    engagement_score: ColLazy[float] = Field(ge=0.0, le=100.0)
+    tier: ColLazy[str] = Field(
+        alias="SUBSCRIPTION_TIER", isin=["Free", "Pro", "Enterprise"]
+    )
+    lifetime_value: Optional[ColLazy[float]] = Field(ge=0.0)
 
 
-class StrictSchema(ProteusFrame):
+class StrictSchema(Schema):
     """Schema with strict non-nullable, unique constraints."""
 
     id: Col[int] = Field(unique=True, nullable=False)
@@ -42,8 +54,19 @@ class StrictSchema(ProteusFrame):
     value: Col[float] = Field(gt=0, lt=1000)
 
 
-class MinimalSchema[T](ProteusFrame[T]):
+class MinimalSchema(Schema):
     """Simplest possible schema."""
+
+    col_a: Col[int]
+    col_b: Col[str]
+
+
+# For cross-backend tests
+from frameright.pandas import Schema as PandasSchema  # noqa: E402
+
+
+class MinimalSchemaPandas(PandasSchema):
+    """Pandas version of minimal schema."""
 
     col_a: Col[int]
     col_b: Col[str]
@@ -97,23 +120,18 @@ class TestPolarsInitialization:
         """Valid Polars data creates a valid object."""
         users = UserData(valid_df)
         assert len(users) == 3
-        assert users.pf_backend.name == "polars"
+        assert users.fr_backend.name == "polars"
 
     def test_auto_detects_polars_backend(self, valid_df: pl.DataFrame):
         """Backend is auto-detected as 'polars'."""
         users = UserData(valid_df)
-        assert users.pf_backend.name == "polars"
-
-    def test_explicit_backend_parameter(self, valid_df: pl.DataFrame):
-        """Explicit backend='polars' works."""
-        users = UserData(valid_df, backend="polars")
-        assert users.pf_backend.name == "polars"
+        assert users.fr_backend.name == "polars"
 
     def test_copy_flag_creates_independent_copy(self, valid_df: pl.DataFrame):
         """copy=True creates an independent copy."""
         users = UserData(valid_df, copy=True)
         # Polars clones on copy
-        assert users.pf_data is not valid_df
+        assert users.fr_data is not valid_df
 
     def test_validate_false_skips_validation(self):
         """validate=False skips all checks."""
@@ -154,8 +172,8 @@ class TestPolarsDtypeValidation:
 
     def test_str_dtype_accepts_utf8(self, valid_df):
         """String columns accept Polars Utf8 type."""
-        users = UserData[pl.DataFrame](valid_df)
-        assert users.pf_data["username"][0] == "alice"
+        users = UserData(valid_df)
+        assert users.fr_data["username"][0] == "alice"
 
 
 # ===========================================================================
@@ -251,14 +269,14 @@ class TestPolarsPropertyAccess:
         """Property setter with Expr updates the underlying DataFrame."""
         users = UserData(valid_df, validate=False)
         users.engagement_score = users.engagement_score * 2
-        result = users.pf_data["engagement_score"].to_list()
+        result = users.fr_data["engagement_score"].to_list()
         assert result == [171.0, 24.0, 199.8]
 
     def test_setter_with_literal(self, valid_df):
         """Property setter with a scalar literal."""
         users = UserData(valid_df, validate=False)
         users.is_active = pl.Series("is_active", [True, True, True])
-        assert users.pf_data["is_active"].to_list() == [True, True, True]
+        assert users.fr_data["is_active"].to_list() == [True, True, True]
 
 
 # ===========================================================================
@@ -267,16 +285,16 @@ class TestPolarsPropertyAccess:
 
 
 class TestPolarsCoreMethods:
-    def test_pf_data_returns_polars_df(self, valid_df):
-        """pf_data returns Polars DataFrame."""
+    def test_fr_data_returns_polars_df(self, valid_df):
+        """fr_data returns Polars DataFrame."""
         users = UserData(valid_df)
-        assert isinstance(users.pf_data, pl.DataFrame)
+        assert isinstance(users.fr_data, pl.DataFrame)
 
     def test_filter_with_expr(self, valid_df):
         """Filtering works with pl.Expr from property getter."""
         users = UserData(valid_df)
         active = users.__class__(
-            users.pf_data.filter(users.is_active), copy=False, validate=False
+            users.fr_data.filter(users.is_active), copy=False, validate=False
         )
         assert len(active) == 2
         assert isinstance(active, UserData)
@@ -285,7 +303,7 @@ class TestPolarsCoreMethods:
         """Filtering works with comparison expressions."""
         users = UserData(valid_df)
         high = users.__class__(
-            users.pf_data.filter(users.engagement_score > 50.0),
+            users.fr_data.filter(users.engagement_score > 50.0),
             copy=False,
             validate=False,
         )
@@ -294,7 +312,7 @@ class TestPolarsCoreMethods:
     def test_to_dict(self, valid_df):
         """to_dict returns a list of dicts."""
         users = UserData(valid_df)
-        d = users.pf_data.to_dicts()
+        d = users.fr_data.to_dicts()
         assert isinstance(d, list)
         assert len(d) == 3
 
@@ -302,47 +320,14 @@ class TestPolarsCoreMethods:
         """to_csv writes a CSV file."""
         users = UserData(valid_df)
         path = str(tmp_path / "test.csv")
-        users.pf_data.write_csv(path)
+        users.fr_data.write_csv(path)
         loaded = pl.read_csv(path)
         assert loaded.height == 3
 
 
 # ===========================================================================
-# SECTION 7: Factory Methods
+# SECTION 7: Example Generation
 # ===========================================================================
-
-
-class TestPolarsFactoryMethods:
-    def test_pf_from_dict(self):
-        """pf_from_dict creates from dict with Polars backend."""
-        data = {"col_a": [1, 2, 3], "col_b": ["a", "b", "c"]}
-        obj = MinimalSchema.pf_from_dict(data, backend="polars")
-        assert isinstance(obj.pf_data, pl.DataFrame)
-        assert len(obj) == 3
-
-    def test_pf_from_records(self):
-        """pf_from_records creates from list of dicts."""
-        records = [
-            {"col_a": 1, "col_b": "a"},
-            {"col_a": 2, "col_b": "b"},
-        ]
-        obj = MinimalSchema.pf_from_records(records, backend="polars")
-        assert isinstance(obj.pf_data, pl.DataFrame)
-        assert len(obj) == 2
-
-    def test_pf_from_csv(self, tmp_path):
-        """pf_from_csv loads from CSV using Polars."""
-        csv_path = str(tmp_path / "test.csv")
-        pl.DataFrame({"col_a": [1, 2], "col_b": ["x", "y"]}).write_csv(csv_path)
-        obj = MinimalSchema.pf_from_csv(csv_path, backend="polars")
-        assert isinstance(obj.pf_data, pl.DataFrame)
-        assert len(obj) == 2
-
-    def test_pf_example(self):
-        """pf_example generates dummy Polars data."""
-        obj = MinimalSchema.pf_example(nrows=5, backend="polars")
-        assert isinstance(obj.pf_data, pl.DataFrame)
-        assert len(obj) == 5
 
 
 # ===========================================================================
@@ -354,18 +339,50 @@ class TestPolarsCoercion:
     def test_coerce_int_column(self):
         """Coerce string→int on Polars."""
         df = pl.DataFrame({"col_a": ["1", "2", "3"], "col_b": ["a", "b", "c"]})
-        obj = MinimalSchema.pf_coerce(df, backend="polars")
-        assert obj.pf_data["col_a"].dtype == pl.Int64
+        obj = MinimalSchema(df, coerce=True)
+        assert obj.fr_data["col_a"].dtype == pl.Int64
 
     def test_coerce_bool_from_string(self):
         """Coerce string→bool on Polars."""
 
-        class BoolSchema(ProteusFrame):
+        class BoolSchema(Schema):
             flag: Col[bool]
 
         df = pl.DataFrame({"flag": ["true", "false", "yes"]})
-        obj = BoolSchema.pf_coerce(df, backend="polars")
-        assert obj.pf_data["flag"].to_list() == [True, False, True]
+        obj = BoolSchema(df, coerce=True)
+        assert obj.fr_data["flag"].to_list() == [True, False, True]
+
+
+# ===========================================================================
+# SECTION 8.5: Strict Mode
+# ===========================================================================
+
+
+class TestPolarsStrict:
+    def test_strict_false_allows_extra_columns(self):
+        """strict=False (default) allows extra columns."""
+        df = pl.DataFrame({"col_a": [1, 2], "col_b": ["x", "y"], "extra": [10, 20]})
+        obj = MinimalSchema(df, strict=False)
+        assert "extra" in obj.fr_data.columns
+
+    def test_strict_true_rejects_extra_columns(self):
+        """strict=True rejects DataFrames with extra columns."""
+        df = pl.DataFrame({"col_a": [1, 2], "col_b": ["x", "y"], "extra": [10, 20]})
+        from frameright.exceptions import ValidationError
+
+        with pytest.raises(ValidationError) as exc_info:
+            MinimalSchema(df, strict=True)
+        # Should mention the extra column or strict mode
+        assert (
+            "extra" in str(exc_info.value).lower()
+            or "strict" in str(exc_info.value).lower()
+        )
+
+    def test_strict_true_accepts_exact_columns(self):
+        """strict=True accepts DataFrames with exactly the schema columns."""
+        df = pl.DataFrame({"col_a": [1, 2], "col_b": ["x", "y"]})
+        obj = MinimalSchema(df, strict=True)
+        assert len(obj) == 2
 
 
 # ===========================================================================
@@ -406,64 +423,14 @@ class TestPolarsProtocols:
 
 class TestPolarsSchemaIntrospection:
     def test_schema_info(self):
-        """pf_schema_info returns a list of dicts (backend-independent)."""
-        info = MinimalSchema.pf_schema_info()
+        """fr_schema_info returns a list of dicts (backend-independent)."""
+        info = MinimalSchema.fr_schema_info()
         assert isinstance(info, list)
         assert len(info) == 2
 
 
 # ===========================================================================
 # SECTION 11: Backend Registry
-# ===========================================================================
-
-
-class TestBackendRegistry:
-    def test_detect_pandas(self):
-        """detect_backend returns pandas adapter for pd.DataFrame."""
-        import pandas as pd
-
-        from proteusframe import detect_backend
-
-        adapter = detect_backend(pd.DataFrame())
-        assert adapter.name == "pandas"
-
-    def test_detect_polars(self):
-        """detect_backend returns polars adapter for pl.DataFrame."""
-        from proteusframe import detect_backend
-
-        adapter = detect_backend(pl.DataFrame())
-        assert adapter.name == "polars"
-
-    def test_detect_unknown_type(self):
-        """detect_backend raises TypeError for unknown types."""
-        from proteusframe import detect_backend
-
-        with pytest.raises(TypeError, match="No ProteusFrame backend"):
-            detect_backend({"a": [1, 2, 3]})
-
-    def test_get_backend_by_name(self):
-        """get_backend returns the correct adapter."""
-        from proteusframe import get_backend
-
-        assert get_backend("pandas").name == "pandas"
-        assert get_backend("polars").name == "polars"
-
-    def test_get_backend_unknown(self):
-        """get_backend raises ValueError for unknown backends."""
-        from proteusframe import get_backend
-
-        with pytest.raises(ValueError, match="Unknown backend"):
-            get_backend("cudf")
-
-    def test_register_custom_backend(self):
-        """register_backend allows custom backends."""
-        from proteusframe import register_backend
-
-        register_backend("my_custom", "some.module.path")
-        # Registration successful — loading would fail since module doesn't exist
-        # but that's fine for this test
-
-
 # ===========================================================================
 # SECTION 12: Cross-backend consistency
 # ===========================================================================
@@ -477,12 +444,12 @@ class TestCrossBackendConsistency:
         pd_df = pd.DataFrame({"col_a": [1, 2], "col_b": ["x", "y"]})
         pl_df = pl.DataFrame({"col_a": [1, 2], "col_b": ["x", "y"]})
 
-        pd_obj = MinimalSchema(pd_df)
+        pd_obj = MinimalSchemaPandas(pd_df)
         pl_obj = MinimalSchema(pl_df)
 
         assert len(pd_obj) == len(pl_obj) == 2
-        assert pd_obj.pf_backend.name == "pandas"
-        assert pl_obj.pf_backend.name == "polars"
+        assert pd_obj.fr_backend.name == "pandas"
+        assert pl_obj.fr_backend.name == "polars"
 
     def test_to_dict_consistent(self):
         """to_dict returns same structure for both backends."""
@@ -491,11 +458,11 @@ class TestCrossBackendConsistency:
         pd_df = pd.DataFrame({"col_a": [1, 2], "col_b": ["x", "y"]})
         pl_df = pl.DataFrame({"col_a": [1, 2], "col_b": ["x", "y"]})
 
-        pd_obj = MinimalSchema[pd.DataFrame](pd_df)
-        pl_obj = MinimalSchema[pl.DataFrame](pl_df)
+        pd_obj = MinimalSchemaPandas(pd_df)
+        pl_obj = MinimalSchema(pl_df)
 
-        pd_dict = pd_obj.pf_data.to_dict(orient="records")
-        pl_dict = pl_obj.pf_data.to_dicts()
+        pd_dict = pd_obj.fr_data.to_dict(orient="records")
+        pl_dict = pl_obj.fr_data.to_dicts()
 
         assert pd_dict == pl_dict
 
@@ -513,101 +480,93 @@ class TestPolarsLazyFrame:
         """Convert the valid DataFrame to a LazyFrame."""
         return valid_df.lazy()
 
-    def test_lazyframe_auto_detection(self):
-        """LazyFrame is auto-detected as polars backend."""
-        from proteusframe import detect_backend
-
-        lf = pl.LazyFrame({"col_a": [1, 2], "col_b": ["x", "y"]})
-        adapter = detect_backend(lf)
-        assert adapter.name == "polars"
-
-    def test_lazyframe_initialization(self, valid_df):
-        """ProteusFrame wraps a LazyFrame successfully."""
+    def test_lazyframe_initialization(self, valid_df: pl.LazyFrame):
+        """Schema wraps a LazyFrame successfully."""
         lf = valid_df.lazy()
-        users = UserData(lf)
+        users = UserDataLazy(lf)
         assert len(users) == 3
 
     def test_lazyframe_property_returns_expr(self, valid_df):
         """Property getter on LazyFrame returns pl.Expr."""
         lf = valid_df.lazy()
-        users = UserData(lf)
+        users = UserDataLazy(lf)
         assert isinstance(users.user_id, pl.Expr)
 
     def test_lazyframe_filter_with_expr(self, valid_df: pl.DataFrame):
         """Filtering works on LazyFrame with expressions."""
         lf = valid_df.lazy()
-        users = UserData(lf)
+        users = UserDataLazy(lf)
         active = users.__class__(
-            users.pf_data.filter(users.is_active), copy=False, validate=False
+            users.fr_data.filter(users.is_active), copy=False, validate=False
         )
-        assert isinstance(active.pf_data, pl.LazyFrame)
+        assert isinstance(active.fr_data, pl.LazyFrame)
         # Collect to verify
-        assert active.pf_data.collect().height == 2
+        assert active.fr_data.collect().height == 2
 
     def test_lazyframe_filter_with_comparison(self, valid_df):
         """Comparison expressions work on LazyFrame filter."""
         lf = valid_df.lazy()
-        users = UserData(lf)
+        users = UserDataLazy(lf)
         high = users.__class__(
-            users.pf_data.filter(users.engagement_score > 50.0),
+            users.fr_data.filter(users.engagement_score > 50.0),
             copy=False,
             validate=False,
         )
-        assert high.pf_data.collect().height == 2
+        assert high.fr_data.collect().height == 2
 
     def test_lazyframe_setter_with_expr(self, valid_df):
         """Setter with expression on LazyFrame."""
         lf = valid_df.lazy()
-        users = UserData(lf, validate=False)
+        users = UserDataLazy(lf, validate=False)
         users.engagement_score = users.engagement_score * 2
-        result = users.pf_data.collect()["engagement_score"].to_list()
+        result = users.fr_data.collect()["engagement_score"].to_list()
         assert result == [171.0, 24.0, 199.8]
 
     def test_lazyframe_setter_with_literal(self, valid_df: pl.DataFrame):
         """Setter with literal value on LazyFrame."""
         lf = valid_df.lazy()
-        users = UserData(lf, validate=False)
-        users.is_active = pl.Series("is_active", [True, True, True])
-        result = users.pf_data.collect()["is_active"].to_list()
+        users = UserDataLazy(lf, validate=False)
+        users.is_active = pl.lit(True)  # Use pl.lit() for lazy frames
+        result = users.fr_data.collect()["is_active"].to_list()
         assert result == [True, True, True]
 
     def test_lazyframe_to_dict(self, valid_df: pl.DataFrame):
         """to_dict collects LazyFrame before converting."""
         lf = valid_df.lazy()
-        users = UserData[pl.LazyFrame](lf)
-        d = users.pf_data.collect().to_dicts()
+        users = UserDataLazy(lf)
+        d = users.fr_data.collect().to_dicts()
         assert isinstance(d, list)
         assert len(d) == 3
 
     def test_lazyframe_to_csv(self, valid_df, tmp_path):
         """to_csv collects LazyFrame before writing."""
         lf = valid_df.lazy()
-        users = UserData(lf)
+        users = UserDataLazy(lf)
         path = str(tmp_path / "lazy_test.csv")
-        users.pf_data.collect().write_csv(path)
+        users.fr_data.collect().write_csv(path)
         loaded = pl.read_csv(path)
         assert loaded.height == 3
 
     def test_lazyframe_copy_returns_lazyframe(self, valid_df):
         """copy on LazyFrame returns the same LazyFrame (immutable)."""
         lf = valid_df.lazy()
-        users = UserData(lf, copy=True)
-        assert isinstance(users.pf_data, pl.LazyFrame)
+        users = UserDataLazy(lf, copy=True)
+        assert isinstance(users.fr_data, pl.LazyFrame)
 
     def test_lazyframe_head(self, valid_df):
         """head collects LazyFrame to return DataFrame."""
         lf = valid_df.lazy()
-        users = UserData(lf)
-        h = users.pf_backend.head(users.pf_data, 2)
+        users = UserDataLazy(lf)
+        h = users.fr_backend.head(users.fr_data, 2)
         assert isinstance(h, pl.DataFrame)
         assert h.height == 2
 
     def test_lazyframe_repr(self, valid_df):
         """repr works with LazyFrame."""
         lf = valid_df.lazy()
-        users = UserData(lf)
+        users = UserDataLazy(lf)
         r = repr(users)
-        assert "UserData" in r
+        assert "UserDataLazy" in r
         assert "polars" in r
 
 

@@ -1,4 +1,4 @@
-"""Pandas backend adapter for ProteusFrame."""
+"""Pandas backend adapter for Schema."""
 
 from __future__ import annotations
 
@@ -12,6 +12,7 @@ from ..exceptions import (
     ConstraintViolationError,
     MissingColumnError,
     TypeMismatchError,
+    ValidationError,
 )
 from .base import BackendAdapter
 
@@ -84,7 +85,9 @@ class PandasBackend(BackendAdapter):
     def get_index_level(self, df: pd.DataFrame, level_name: str) -> pd.Index:
         return df.index.get_level_values(level_name)
 
-    def set_index_level(self, df: pd.DataFrame, level_name: str, value: Any) -> pd.DataFrame:
+    def set_index_level(
+        self, df: pd.DataFrame, level_name: str, value: Any
+    ) -> pd.DataFrame:
         idx = df.index
         arrays = [
             value if idx.names[i] == level_name else idx.get_level_values(i)
@@ -126,12 +129,6 @@ class PandasBackend(BackendAdapter):
     # Construction helpers
     # ------------------------------------------------------------------
 
-    def from_dict(self, data: Dict[str, list]) -> pd.DataFrame:
-        return pd.DataFrame(data)
-
-    def from_records(self, records: List[dict]) -> pd.DataFrame:
-        return pd.DataFrame.from_records(records)  # type: ignore[no-any-return]
-
     def read_csv(self, path: str, **kwargs: Any) -> pd.DataFrame:
         return pd.read_csv(path, **kwargs)  # type: ignore[no-any-return]
 
@@ -144,15 +141,16 @@ class PandasBackend(BackendAdapter):
 
     def build_pandera_schema(
         self,
-        pf_schema: Dict[str, dict],
+        fr_schema: Dict[str, dict],
         df: Optional[Any] = None,
         check_types: bool = True,
+        strict: bool = False,
     ) -> Any:
         import pandera.pandas as pa
 
         columns: Dict[str, pa.Column] = {}
 
-        for attr_name, meta in pf_schema.items():
+        for attr_name, meta in fr_schema.items():
             df_col: str = meta["df_col"]
             inner_type = meta["inner_type"]
             fi = meta["field_info"]
@@ -190,7 +188,7 @@ class PandasBackend(BackendAdapter):
             if check_types and inner_type is not None:
                 pa_dtype = self._PANDERA_DTYPE_MAP.get(inner_type)
                 # Use nullable boolean dtype when column is nullable
-                if inner_type == bool and fi.nullable:
+                if inner_type is bool and fi.nullable:
                     pa_dtype = "boolean"
 
             columns[df_col] = pa.Column(
@@ -202,7 +200,7 @@ class PandasBackend(BackendAdapter):
                 coerce=False,
             )
 
-        return pa.DataFrameSchema(columns=columns)
+        return pa.DataFrameSchema(columns=columns, strict=strict)
 
     def validate_with_pandera(
         self,
@@ -210,7 +208,6 @@ class PandasBackend(BackendAdapter):
         pandera_schema: Any,
         lazy: bool = True,
     ) -> None:
-        import pandera.pandas as pa
         from pandera import errors
 
         try:
@@ -221,14 +218,37 @@ class PandasBackend(BackendAdapter):
             self._translate_single_pandera_error(exc)
 
     def _translate_pandera_errors(self, exc: Any) -> None:
-        """Translate a Pandera SchemaErrors (lazy) into ProteusFrame exceptions."""
+        """Translate a Pandera SchemaErrors (lazy) into Schema exceptions."""
         fc = exc.failure_cases
 
         # Check for missing columns first
         missing_mask = fc["check"] == "column_in_dataframe"
         if missing_mask.any():
-            missing_cols = sorted(fc.loc[missing_mask, "failure_case"].unique().tolist())
-            raise MissingColumnError(f"Missing required columns: {missing_cols}") from exc
+            missing_cols = sorted(
+                fc.loc[missing_mask, "failure_case"].unique().tolist()
+            )
+            raise MissingColumnError(
+                f"Missing required columns: {missing_cols}"
+            ) from exc
+
+        # Check for extra columns (strict mode)
+        extra_mask = fc["check"] == "column_in_schema"
+        if extra_mask.any():
+            # Get column name from the error message
+            error_msg = fc.loc[extra_mask].iloc[0].get("error", "")
+            # Extract column name from error message like "column 'extra' not in DataFrameSchema"
+            import re
+
+            match = re.search(r"column '([^']+)' not in", error_msg)
+            if match:
+                col_name = match.group(1)
+                raise ValidationError(
+                    f"Column '{col_name}' is not defined in the schema (strict mode)"
+                ) from exc
+            else:
+                raise ValidationError(
+                    "Extra columns not allowed in strict mode"
+                ) from exc
 
         # Check for dtype mismatches
         dtype_mask = fc["check"].str.startswith("dtype(", na=False)
@@ -243,10 +263,12 @@ class PandasBackend(BackendAdapter):
             row = fc.iloc[0]
             col = row.get("column", "?")
             check = row.get("check", "?")
-            raise ConstraintViolationError(f"Column '{col}' failed check: {check}") from exc
+            raise ConstraintViolationError(
+                f"Column '{col}' failed check: {check}"
+            ) from exc
 
     def _translate_single_pandera_error(self, exc: Any) -> None:
-        """Translate a single Pandera SchemaError into a ProteusFrame exception."""
+        """Translate a single Pandera SchemaError into a Schema exception."""
         msg = str(exc)
         if "not in dataframe" in msg or "column_in_dataframe" in msg:
             raise MissingColumnError(msg) from exc
@@ -268,17 +290,17 @@ class PandasBackend(BackendAdapter):
         nullable: bool = True,
     ) -> pd.DataFrame:
         try:
-            if inner_type == int:
-                df[col] = pd.to_numeric(df[col], errors=errors)
+            if inner_type is int:
+                df[col] = pd.to_numeric(df[col], errors=errors)  # type: ignore
                 try:
                     df[col] = df[col].astype("Int64")
                 except (TypeError, ValueError):
                     pass
-            elif inner_type == float:
-                df[col] = pd.to_numeric(df[col], errors=errors)
-            elif inner_type == str:
+            elif inner_type is float:
+                df[col] = pd.to_numeric(df[col], errors=errors)  # type: ignore
+            elif inner_type is str:
                 df[col] = df[col].astype(str)
-            elif inner_type == bool:
+            elif inner_type is bool:
                 if ptypes.is_object_dtype(df[col]) or ptypes.is_string_dtype(df[col]):
                     original_col = df[col].copy()
                     df[col] = df[col].astype(object)
@@ -292,7 +314,8 @@ class PandasBackend(BackendAdapter):
                         if errors == "raise":
                             bad_values = original_col.loc[mask_unknown].unique()[:5]
                             raise ValueError(
-                                f"Column '{col}' contains values that cannot be converted to bool: {list(bad_values)}"
+                                f"Column '{col}' contains values that cannot be "
+                                f"converted to bool: {list(bad_values)}"
                             )
                         elif errors == "coerce":
                             # Set unknown values to NA
@@ -316,40 +339,13 @@ class PandasBackend(BackendAdapter):
                     # Already numeric, just convert to bool
                     df[col] = df[col].astype(bool)
             elif inner_type in (datetime, date):
-                df[col] = pd.to_datetime(df[col], errors=errors)
+                df[col] = pd.to_datetime(df[col], errors=errors)  # type: ignore
         except Exception as e:
             if errors == "raise":
                 raise TypeError(
                     f"Cannot coerce column '{col}' to {inner_type.__name__}: {e}"
                 ) from e
         return df
-
-    # ------------------------------------------------------------------
-    # Example data generation
-    # ------------------------------------------------------------------
-
-    def generate_example_data(
-        self,
-        pf_schema: Dict[str, dict],
-        nrows: int = 3,
-    ) -> pd.DataFrame:
-        data: Dict[str, list] = {}
-        for attr_name, meta in pf_schema.items():
-            col = meta["df_col"]
-            inner_type = meta["inner_type"]
-            if inner_type == int:
-                data[col] = list(range(nrows))
-            elif inner_type == float:
-                data[col] = [float(i) for i in range(nrows)]
-            elif inner_type == str:
-                data[col] = [f"{attr_name}_{i}" for i in range(nrows)]
-            elif inner_type == bool:
-                data[col] = [i % 2 == 0 for i in range(nrows)]
-            elif inner_type in (datetime, date):
-                data[col] = pd.date_range("2020-01-01", periods=nrows, freq="D").tolist()
-            else:
-                data[col] = [None] * nrows
-        return pd.DataFrame(data)
 
     # ------------------------------------------------------------------
     # Schema introspection

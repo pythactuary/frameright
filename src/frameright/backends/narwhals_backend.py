@@ -1,4 +1,4 @@
-"""Narwhals backend adapter for ProteusFrame.
+"""Narwhals backend adapter for Schema.
 
 This backend handles narwhals DataFrames (nw.DataFrame) for users who want
 backend-agnostic code. For native pandas or polars functionality, use the
@@ -11,7 +11,7 @@ Users would use this by wrapping their DataFrame:
     df = pd.DataFrame({"a": [1, 2, 3]})
     nw_df = nw.from_native(df)
 
-    class MyFrame(ProteusFrame):
+    class MyFrame(Schema):
         a: Col[int]
 
     frame = MyFrame(nw_df)  # Uses NarwhalsBackend
@@ -22,15 +22,11 @@ from __future__ import annotations
 
 from collections import namedtuple
 from datetime import date, datetime
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 
 import narwhals as nw
 
-from ..exceptions import (
-    ConstraintViolationError,
-    MissingColumnError,
-    TypeMismatchError,
-)
+from ..exceptions import ConstraintViolationError, MissingColumnError, TypeMismatchError
 from .base import BackendAdapter
 
 
@@ -58,6 +54,9 @@ class NarwhalsBackend(BackendAdapter):
         return df.with_columns(**{col: value})
 
     def has_column(self, df: nw.DataFrame, col: str) -> bool:
+        # For LazyFrames, use collect_schema().names() to avoid performance warning
+        if hasattr(df, "collect_schema"):
+            return col in df.collect_schema().names()
         return col in df.columns
 
     def column_names(self, df: nw.DataFrame) -> List[str]:
@@ -81,7 +80,9 @@ class NarwhalsBackend(BackendAdapter):
             return df[level_name]
         raise KeyError(f"No column '{level_name}' found")
 
-    def set_index_level(self, df: nw.DataFrame, level_name: str, value: Any) -> nw.DataFrame:
+    def set_index_level(
+        self, df: nw.DataFrame, level_name: str, value: Any
+    ) -> nw.DataFrame:
         return self.set_column(df, level_name, value)
 
     def index_nlevels(self, df: nw.DataFrame) -> int:
@@ -127,16 +128,6 @@ class NarwhalsBackend(BackendAdapter):
             native.write_csv(path, **kwargs)
 
     # Construction helpers (return native for narwhals to wrap)
-    def from_dict(self, data: Dict[str, list]) -> Any:
-        import pandas as pd
-
-        return nw.from_native(pd.DataFrame(data))
-
-    def from_records(self, records: List[dict]) -> Any:
-        import pandas as pd
-
-        return nw.from_native(pd.DataFrame.from_records(records))
-
     def read_csv(self, path: str, **kwargs: Any) -> Any:
         import pandas as pd
 
@@ -150,13 +141,16 @@ class NarwhalsBackend(BackendAdapter):
     # Pandera validation (narwhals wraps native, so validate the native)
     def build_pandera_schema(
         self,
-        pf_schema: Dict[str, dict],
+        fr_schema: Dict[str, dict],
         df: nw.DataFrame,
         check_types: bool = True,
+        strict: bool = False,
     ) -> Any:
         """Build pandera schema based on the underlying native DataFrame."""
         native = df.to_native()
-        is_polars = hasattr(native, "__class__") and "polars" in native.__class__.__module__
+        is_polars = (
+            hasattr(native, "__class__") and "polars" in native.__class__.__module__
+        )
 
         if is_polars:
             import pandera.polars as pa
@@ -184,7 +178,7 @@ class NarwhalsBackend(BackendAdapter):
 
         columns: Dict[str, pa.Column] = {}
 
-        for attr_name, meta in pf_schema.items():
+        for attr_name, meta in fr_schema.items():
             df_col: str = meta["df_col"]
             inner_type = meta["inner_type"]
             fi = meta["field_info"]
@@ -215,7 +209,7 @@ class NarwhalsBackend(BackendAdapter):
             pa_dtype: Any = None
             if check_types and inner_type is not None:
                 pa_dtype = dtype_map.get(inner_type)
-                if not is_polars and inner_type == bool and fi.nullable:
+                if not is_polars and inner_type is bool and fi.nullable:
                     pa_dtype = "boolean"
 
             columns[df_col] = pa.Column(
@@ -227,7 +221,7 @@ class NarwhalsBackend(BackendAdapter):
                 coerce=False,
             )
 
-        return pa.DataFrameSchema(columns=columns)
+        return pa.DataFrameSchema(columns=columns, strict=strict)
 
     def validate_with_pandera(
         self,
@@ -236,7 +230,6 @@ class NarwhalsBackend(BackendAdapter):
         lazy: bool = True,
     ) -> None:
         from pandera import errors
-        import pandas as pd
 
         native = df.to_native()
 
@@ -248,16 +241,18 @@ class NarwhalsBackend(BackendAdapter):
             self._translate_single_pandera_error(exc)
 
     def _translate_pandera_errors(self, exc: Any) -> None:
-        import pandas as pd
-
         fc = exc.failure_cases
         if hasattr(fc, "to_pandas"):
             fc = fc.to_pandas()
 
         missing_mask = fc["check"] == "column_in_dataframe"
         if missing_mask.any():
-            missing_cols = sorted(fc.loc[missing_mask, "failure_case"].unique().tolist())
-            raise MissingColumnError(f"Missing required columns: {missing_cols}") from exc
+            missing_cols = sorted(
+                fc.loc[missing_mask, "failure_case"].unique().tolist()
+            )
+            raise MissingColumnError(
+                f"Missing required columns: {missing_cols}"
+            ) from exc
 
         dtype_mask = fc["check"].str.startswith("dtype(", na=False)
         if dtype_mask.any():
@@ -270,7 +265,9 @@ class NarwhalsBackend(BackendAdapter):
             row = fc.iloc[0]
             col = row.get("column", "?")
             check = row.get("check", "?")
-            raise ConstraintViolationError(f"Column '{col}' failed check: {check}") from exc
+            raise ConstraintViolationError(
+                f"Column '{col}' failed check: {check}"
+            ) from exc
 
     def _translate_single_pandera_error(self, exc: Any) -> None:
         msg = str(exc)
@@ -311,39 +308,6 @@ class NarwhalsBackend(BackendAdapter):
     def collect(self, df: nw.DataFrame) -> nw.DataFrame:
         # Narwhals DataFrames are already collected
         return df
-
-    # Schema and example data
-    def generate_example_data(
-        self,
-        pf_schema: Dict[str, dict],
-        nrows: int = 3,
-    ) -> nw.DataFrame:
-        """Generate example narwhals DataFrame from schema."""
-        data: Dict[str, List[Any]] = {}
-        for attr_name, meta in pf_schema.items():
-            col = meta["df_col"]
-            inner_type = meta["inner_type"]
-            if inner_type == int:
-                data[col] = list(range(nrows))
-            elif inner_type == float:
-                data[col] = [float(i) for i in range(nrows)]
-            elif inner_type == str:
-                data[col] = [f"{attr_name}_{i}" for i in range(nrows)]
-            elif inner_type == bool:
-                data[col] = [i % 2 == 0 for i in range(nrows)]
-            elif inner_type in (datetime, date):
-                # Create datetime values as list
-                import pandas as pd
-
-                data[col] = pd.date_range("2020-01-01", periods=nrows, freq="D").tolist()
-            else:
-                data[col] = [None] * nrows
-
-        # Create via pandas then convert to narwhals
-        import pandas as pd
-
-        pd_df = pd.DataFrame(data)
-        return nw.from_native(pd_df)
 
     def schema_info_to_dataframe(self, rows: List[dict]) -> nw.DataFrame:
         """Convert schema info rows to narwhals DataFrame."""

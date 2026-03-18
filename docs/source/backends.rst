@@ -1,10 +1,10 @@
 Backend Support
 ===============
 
-ProteusFrame supports multiple DataFrame backends. You can choose your backend using:
+Schema supports multiple DataFrame backends. You can choose your backend using:
 
 1. **Backend-specific classes** (recommended for type safety)
-2. **Base ProteusFrame class** (defaults to pandas, or specify ``backend`` parameter)
+2. **Base Schema class** (defaults to pandas, or specify ``backend`` parameter)
 
 Supported Backends
 ------------------
@@ -16,41 +16,42 @@ Supported Backends
 Backend Selection
 -----------------
 
-**Option 1: Backend-Specific Classes (Recommended)**
+**Explicit Module Imports (Required)**
 
-Use dedicated classes for the strongest type guarantees:
+Import ``Schema`` and ``Col`` from backend-specific modules:
 
 .. code-block:: python
 
-    from proteusframe import ProteusFramePandas, ProteusFramePolars, ProteusFramePolarsLazy
-    from proteusframe import Field
-    from proteusframe.typing import Col
+    from frameright.pandas import Schema as PandasSchema, Col, Field
+    from frameright.polars.eager import Schema as PolarsSchema, Col as PolarsCol, Field
+    from frameright.polars.lazy import Schema as LazySchema, Col as LazyCol, Field
 
     # Pandas backend
-    class OrdersPandas(ProteusFramePandas):
+    class OrdersPandas(PandasSchema):
         order_id: Col[int] = Field(unique=True)
         revenue: Col[float] = Field(ge=0)
 
     # Polars eager backend
-    class OrdersPolars(ProteusFramePolars):
-        order_id: Col[int] = Field(unique=True)
-        revenue: Col[float] = Field(ge=0)
+    class OrdersPolars(PolarsSchema):
+        order_id: PolarsCol[int] = Field(unique=True)
+        revenue: PolarsCol[float] = Field(ge=0)
 
     # Polars lazy backend
-    class OrdersLazy(ProteusFramePolarsLazy):
-        order_id: Col[int] = Field(unique=True)
-        revenue: Col[float] = Field(ge=0)
+    class OrdersLazy(LazySchema):
+        order_id: LazyCol[int] = Field(unique=True)
+        revenue: LazyCol[float] = Field(ge=0)
 
-**Option 2: Base ProteusFrame (Defaults to Pandas)**
+**Backend Auto-Detection**
 
-The base ``ProteusFrame`` class defaults to pandas backend for backward compatibility:
+Each backend module's ``Schema`` class is tied to its specific backend.
+The underlying data type determines validation behavior (e.g., ``pl.DataFrame`` uses ``pandera.polars``):
 
 .. code-block:: python
 
-    from proteusframe import ProteusFrame, Field
-    from proteusframe.typing import Col
+    from frameright.polars.eager import Schema, Col, Field
+    from frameright.typing import Col
 
-    class Orders(ProteusFrame):  # Defaults to pandas
+    class Orders(Schema):  # Defaults to pandas
         order_id: Col[int] = Field(unique=True)
         revenue: Col[float] = Field(ge=0)
 
@@ -64,22 +65,22 @@ The base ``ProteusFrame`` class defaults to pandas backend for backward compatib
     polars_df = pl.DataFrame({...})
     orders_pl = Orders(polars_df, backend="polars")  # Explicitly use polars
 
-**Type Safety:** Backend-specific classes like ``ProteusFramePandas`` provide stronger
+**Type Safety:** Explicit module imports like ``frameright.pandas``, ``frameright.polars.eager`` provide stronger
 type guarantees and are recommended for production code.
 
 Typing Notes
 ------------
 
-ProteusFrame schemas are backend-agnostic, but you can opt into backend-specific typing for a better IDE experience:
+Schema schemas are backend-agnostic, but you can opt into backend-specific typing for a better IDE experience:
 
-* Pandas: ``from proteusframe.typing.pandas import Col, Index`` (columns can type-check as ``pd.Series[T]`` with pandas stubs)
-* Polars eager: ``from proteusframe.typing.polars_eager import Col, Index`` (columns type-check as ``pl.Series``)
-* Polars lazy: ``from proteusframe.typing.polars_lazy import Col, Index`` (columns type-check as ``pl.Expr`` for expression chaining)
+* Pandas: ``from frameright.typing.pandas import Col, Index`` (columns can type-check as ``pd.Series[T]`` with pandas stubs)
+* Polars eager: ``from frameright.typing.polars_eager import Col, Index`` (columns type-check as ``pl.Series``)
+* Polars lazy: ``from frameright.typing.polars_lazy import Col, Index`` (columns type-check as ``pl.Expr`` for expression chaining)
 
 .. note::
 
     Polars and Narwhals do not currently expose fully generic ``Series[T]`` / ``Expr[T]`` types upstream.
-    ProteusFrame's ``Col[T]`` is still valuable as a schema contract and for IDE autocomplete, but type checkers
+    Schema's ``Col[T]`` is still valuable as a schema contract and for IDE autocomplete, but type checkers
     generally treat the runtime values as unparameterized ``pl.Series`` / ``pl.Expr`` / ``nw.Series`` today.
 
 At runtime, the actual values you get depend on the backend:
@@ -92,14 +93,14 @@ Python 3.12+ Generic Syntax (PEP 695)
 ------------------------------------
 
 Python 3.12 adds a new generic class syntax that avoids manual ``TypeVar`` boilerplate.
-ProteusFrame works well with this style and still preserves backend inference:
+Schema works well with this style and still preserves backend inference:
 
 .. code-block:: python
 
-        from proteusframe import ProteusFrame, Field
-        from proteusframe.typing import Col
+        from frameright import Schema, Field
+        from frameright.typing import Col
 
-        class Sales[T](ProteusFrame[T]):
+        class Sales[T](Schema[T]):
                 order_id: Col[int] = Field(unique=True)
                 customer: Col[str]
                 revenue: Col[float] = Field(ge=0)
@@ -107,7 +108,7 @@ ProteusFrame works well with this style and still preserves backend inference:
 Why both ``T``s?
 
 * ``Sales[T]`` declares the generic parameter.
-* ``ProteusFrame[T]`` forwards it to the base class so type checkers can infer
+* ``Schema[T]`` forwards it to the base class so type checkers can infer
     the backend type from the constructor argument.
 
 This is the shortest syntax that keeps full static typing without defaulting
@@ -120,7 +121,7 @@ Pandas Backend
 
 .. code-block:: bash
 
-    pip install proteusframe
+    pip install Schema
 
 Pandas comes as a default dependency.
 
@@ -140,11 +141,11 @@ Pandas comes as a default dependency.
     df = pd.read_csv("data.csv")
     orders = Orders(df)
 
-    # Use pf_data for backend-specific operations
-    customer_totals = orders.pf_data.groupby(orders.customer_id).sum()
+    # Use fr_data for backend-specific operations
+    customer_totals = orders.fr_data.groupby(orders.customer_id).sum()
 
     # You can always access the underlying DataFrame directly
-    print(orders.pf_data.columns)
+    print(orders.fr_data.columns)
 
 Polars Backend
 --------------
@@ -153,7 +154,7 @@ Polars Backend
 
 .. code-block:: bash
 
-    pip install proteusframe[polars]
+    pip install Schema[polars]
 
 **Why Polars?**
 
@@ -172,11 +173,11 @@ Polars Backend
     df = pl.read_csv("data.csv")
     orders = Orders(df)
 
-    # Use pf_data for backend-specific operations
-    customer_totals = orders.pf_data.group_by(orders.customer_id).sum()
+    # Use fr_data for backend-specific operations
+    customer_totals = orders.fr_data.group_by(orders.customer_id).sum()
 
     # You can always access the underlying DataFrame directly
-    print(orders.pf_data.columns)
+    print(orders.fr_data.columns)
 
 **Lazy Evaluation:**
 
@@ -186,10 +187,10 @@ Polars supports lazy evaluation for complex query optimization:
 
     # LazyFrame is automatically handled
     lazy_df = pl.scan_csv("data.csv")
-    orders = Orders(lazy_df)  # ProteusFrame works with LazyFrames too
+    orders = Orders(lazy_df)  # Schema works with LazyFrames too
 
     # Operations are lazy until you collect()
-    filtered_df = orders.pf_data.filter(orders.revenue > 1000)
+    filtered_df = orders.fr_data.filter(orders.revenue > 1000)
     # Execute the full query plan
     result = filtered_df.collect()
 
@@ -200,7 +201,7 @@ The key benefit: **write your schema once, use it with any backend**.
 
 .. code-block:: python
 
-    class SalesData(ProteusFrame):
+    class SalesData(Schema):
         """Works with both Pandas and Polars."""
         date: Col[str]
         product: Col[str]
@@ -233,7 +234,7 @@ The validation logic is identical. Pandera automatically handles backend-specifi
 
 .. code-block:: python
 
-    class Validated(ProteusFrame):
+    class Validated(Schema):
         amount: Col[float] = Field(ge=0, le=1000)
         status: Col[str] = Field(isin=["active", "inactive"])
 
@@ -248,21 +249,21 @@ The validation logic is identical. Pandera automatically handles backend-specifi
 Backend-Specific Operations
 ----------------------------
 
-For backend-specific operations, use ``pf_data`` to access the underlying DataFrame directly:
+For backend-specific operations, use ``fr_data`` to access the underlying DataFrame directly:
 
 .. code-block:: python
 
     orders = Orders(df)  # Works with either backend
 
     # Pandas-specific
-    if isinstance(orders.pf_data, pd.DataFrame):
-        result = orders.pf_data.groupby(orders.customer_id).sum()
+    if isinstance(orders.fr_data, pd.DataFrame):
+        result = orders.fr_data.groupby(orders.customer_id).sum()
 
     # Polars-specific
-    elif isinstance(orders.pf_data, pl.DataFrame):
-        result = orders.pf_data.group_by(orders.customer_id).sum()
+    elif isinstance(orders.fr_data, pl.DataFrame):
+        result = orders.fr_data.group_by(orders.customer_id).sum()
 
-For backend-agnostic access, use ``pf_data`` which returns a `narwhals
+For backend-agnostic access, use ``fr_data`` which returns a `narwhals
 <https://narwhals-dev.github.io/narwhals/>`__ wrapper with full IDE autocomplete:
 
 .. code-block:: python
@@ -270,10 +271,10 @@ For backend-agnostic access, use ``pf_data`` which returns a `narwhals
     import narwhals as nw
 
     # These work regardless of backend
-    orders.pf_data              # Returns nw.DataFrame or nw.LazyFrame
-    orders.pf_data.columns      # Column names (backend-agnostic)
-    orders.pf_data.schema       # Narwhals schema
-    orders.pf_data.to_native()  # Escape to native DataFrame (zero-copy)
+    orders.fr_data              # Returns nw.DataFrame or nw.LazyFrame
+    orders.fr_data.columns      # Column names (backend-agnostic)
+    orders.fr_data.schema       # Narwhals schema
+    orders.fr_data.to_native()  # Escape to native DataFrame (zero-copy)
 
 Performance Comparison
 ----------------------
@@ -318,34 +319,52 @@ Switching backends requires minimal code changes:
     # Before (Pandas)
     df = pd.read_csv("data.csv")
     orders = Orders(df)
-    result = orders.pf_data.groupby(orders.customer_id).sum()
+    result = orders.fr_data.groupby(orders.customer_id).sum()
 
     # After (Polars)
     df = pl.read_csv("data.csv")
     orders = Orders(df)
-    result = orders.pf_data.group_by(orders.customer_id).sum()  # Note: group_by vs groupby
+    result = orders.fr_data.group_by(orders.customer_id).sum()  # Note: group_by vs groupby
 
 The schema definition (``Orders``) stays exactly the same. Only the DataFrame creation and backend-specific method calls change.
-For backend-agnostic code, use ``pf_data`` — the narwhals API is the same regardless of backend.
+For backend-agnostic code, use ``fr_data`` — the narwhals API is the same regardless of backend.
 
 
 Adding a Backend (Advanced)
 ---------------------------
 
-ProteusFrame's backend layer is an adapter interface implemented per DataFrame library.
-At runtime, backend selection happens via ``proteusframe.detect_backend()`` (type-based)
-or by passing ``backend=...`` explicitly.
+FrameRight's backend layer is a simple adapter interface implemented per DataFrame library.
+Each backend module (``frameright.pandas``, ``frameright.polars.eager``, etc.) provides its own
+``Schema`` class with a hardcoded backend adapter instance.
 
-If you want to integrate another DataFrame implementation, the intended path is:
-
-1. Implement a ``BackendAdapter`` (see ``proteusframe.backends.base.BackendAdapter``)
-2. Register it with ``proteusframe.register_backend(name, module_path)``
+**No auto-detection or dispatch logic** — importing from a specific module gives you that backend.
+This design is intentionally simple and fast:
 
 .. code-block:: python
 
-        from proteusframe import register_backend
+    from frameright.pandas import Schema       # _fr_backend = PandasBackend()
+    from frameright.polars.eager import Schema # _fr_backend = PolarsEagerBackend()
+    from frameright.polars.lazy import Schema  # _fr_backend = PolarsLazyBackend()
 
-        register_backend("mybackend", "myproj.proteusframe_backends.mybackend")
+If you want to integrate another DataFrame implementation:
+
+1. Implement a ``BackendAdapter`` (see ``frameright.backends.base.BackendAdapter``)
+2. Create a new module with a ``Schema`` class that sets ``_fr_backend``
+
+.. code-block:: python
+
+    from frameright.backends.base import BackendAdapter
+    from frameright.core import BaseSchema
+
+    class MyBackend(BackendAdapter):
+        # Implement required methods...
+        pass
+
+    class Schema(BaseSchema):
+        _fr_backend = MyBackend()
+
+    # Users import your Schema directly
+    from mypackage import Schema
 
 
 Notes on cuDF
@@ -356,10 +375,10 @@ That said, there are two separate concerns:
 
 * **DataFrame operations** (get/set columns, filtering, I/O, etc.): cuDF can often be supported with a
     fairly thin adapter because many method names mirror Pandas.
-* **Runtime validation** (Pandera): ProteusFrame currently relies on Pandera's Pandas and Polars backends.
+* **Runtime validation** (Pandera): Schema currently relies on Pandera's Pandas and Polars backends.
     If Pandera doesn't support cuDF validation in your environment, a cuDF adapter would either need to:
 
-    - raise a clear ``NotImplementedError`` for ``pf_validate()``, or
+    - raise a clear ``NotImplementedError`` for ``fr_validate()``, or
     - validate by materialising to Pandas (acceptable for small/medium data, but defeats GPU benefits), or
     - provide an alternative validation implementation.
 

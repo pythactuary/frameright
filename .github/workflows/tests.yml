@@ -31,7 +31,7 @@ jobs:
       run: pytest --tb=short -q
 
     - name: Type checking
-      run: mypy src/proteusframe
+      run: mypy src/frameright
 
     - name: Linting
-      run: ruff check src/proteusframe
+      run: ruff check src/frameright

@@ -7,16 +7,16 @@ Installation
 .. code-block:: bash
 
     # For Pandas backend (default)
-    pip install proteusframe
+    pip install Schema
 
     # For Polars backend (optional)
-    pip install proteusframe[polars]
+    pip install Schema[polars]
 
     # For Narwhals backend (optional)
-    pip install proteusframe[narwhals]
+    pip install Schema[narwhals]
 
-ProteusFrame supports multiple backends. Use backend-specific classes for type safety,
-or use the base ``ProteusFrame`` class which defaults to pandas.
+Schema supports multiple backends. Use backend-specific classes for type safety,
+by importing from the appropriate backend module (``frameright.pandas``, ``frameright.polars.eager``, etc.).
 
 
 Defining a Schema
@@ -28,11 +28,11 @@ Define your DataFrame schema as a Python class using ``Col[T]`` type hints:
 
     For the best editor experience, import backend-specific typing shims:
 
-    * Pandas: ``from proteusframe.typing.pandas import Col, Index``
-    * Polars eager: ``from proteusframe.typing.polars_eager import Col, Index``
-    * Polars lazy: ``from proteusframe.typing.polars_lazy import Col, Index``
+    * Pandas: ``from frameright.typing.pandas import Col, Index``
+    * Polars eager: ``from frameright.typing.polars_eager import Col, Index``
+    * Polars lazy: ``from frameright.typing.polars_lazy import Col, Index``
 
-    The generic ``from proteusframe.typing import Col`` also works and preserves the
+    The generic ``from frameright.typing import Col`` also works and preserves the
     inner type parameter ``T`` for schema annotations.
 
     **Important typing note:** Pandas has mature type stubs, so type checkers can often
@@ -43,12 +43,12 @@ Define your DataFrame schema as a Python class using ``Col[T]`` type hints:
 
 .. code-block:: python
 
-    from proteusframe import ProteusFrame, Field
-    from proteusframe.typing import Col
+    from frameright import Schema, Field
+    from frameright.typing import Col
     from typing import Optional
     import pandas as pd
 
-    class Customer(ProteusFrame):
+    class Customer(Schema):
         customer_id: Col[int] = Field(unique=True, nullable=False)
         """Unique customer identifier."""
         name: Col[str] = Field(min_length=1)
@@ -64,50 +64,50 @@ Define your DataFrame schema as a Python class using ``Col[T]`` type hints:
 Loading Data
 ------------
 
-**With Pandas (using base ProteusFrame):**
+**With Pandas (using base Schema):**
 
 .. code-block:: python
 
-    # From a DataFrame (defaults to pandas)
+    # From a pandas DataFrame
     df = pd.DataFrame({...})
     customers = Customer(df)
 
-    # From a CSV file
-    customers = Customer.pf_from_csv("customers.csv")
+    # Load from CSV and wrap
+    df = pd.read_csv("customers.csv")
+    customers = Customer(df)
 
-    # From a dictionary
-    customers = Customer.pf_from_dict({
-        "customer_id": [1, 2],
-        "name": ["Alice", "Bob"],
-        ...
-    })
-
-**With Polars (recommended: use ProteusFramePolars):**
+**With Polars (eager - recommended for interactive use):**
 
 .. code-block:: python
 
     import polars as pl
-    from proteusframe import ProteusFramePolars, Field
-    from proteusframe.typing.polars_eager import Col
+    from frameright.polars.eager import Schema, Col, Field
 
-    # Define schema with backend-specific class
-    class Customer(ProteusFramePolars):  # Explicitly uses Polars
+    # Define schema using polars eager module
+    class Customer(Schema):  # Uses Polars eager backend
         customer_id: Col[int] = Field(unique=True)
         name: Col[str]
         ...
 
     # From a Polars DataFrame
     df = pl.DataFrame({...})
-    customers = Customer(df)  # Uses Polars backend
+    customers = Customer(df)  # Uses Polars eager backend
 
-**Alternative: Use base ProteusFrame with backend parameter:**
+**All backends work the same way:**
 
 .. code-block:: python
 
-    from proteusframe import ProteusFrame
-
-    class Customer(ProteusFrame):  # Defaults to pandas
-        ...
+    # Pandas
+    from frameright.pandas import Schema, Col, Field
+    
+    # Polars eager
+    from frameright.polars.eager import Schema, Col, Field
+    
+    # Polars lazy
+    from frameright.polars.lazy import Schema, Col, Field
+    
+    # Narwhals (backend-agnostic)
+    from frameright.narwhals.eager import Schema, Col, Field
 
     # Explicitly specify polars
     df = pl.DataFrame({...})
@@ -124,14 +124,14 @@ Type-Safe Access
     print(customers.age.mean())
 
     # Filter using the backend's native API, then re-wrap
-    young_df = customers.pf_data[customers.age < 30]
+    young_df = customers.fr_data[customers.age < 30]
     young = Customer(young_df, validate=False)
 
 
 Validation (Powered by Pandera)
 --------------------------------
 
-ProteusFrame uses **Pandera** for runtime validation, giving you production-tested constraint
+Schema uses **Pandera** for runtime validation, giving you production-tested constraint
 checking with helpful error messages.
 
 Validation runs automatically on construction:
@@ -144,7 +144,7 @@ You can also run validation manually:
 
 .. code-block:: python
 
-    customers.pf_validate()
+    customers.fr_validate()
 
 To skip validation (e.g. after filtering):
 
@@ -156,14 +156,14 @@ To skip validation (e.g. after filtering):
 
     In production pipelines, a common pattern is to validate at I/O boundaries (CSV reads, API inputs)
     and at team handoffs (function outputs), while skipping validation on intermediate steps for speed.
-    You can always call ``obj.pf_validate()`` right before returning a ProteusFrame from a public API.
+    You can always call ``obj.fr_validate()`` right before returning a Schema from a public API.
 
 **Benefits of Pandera integration:**
 
 * Industry-standard validation library with extensive testing
 * Clear, actionable error messages with row/column context
 * Works with both Pandas and Polars backends
-* Extensible — use Pandera directly for custom checks on ``obj.pf_data``
+* Extensible — use Pandera directly for custom checks on ``obj.fr_data``
 
 
 Type Coercion
@@ -174,7 +174,7 @@ When loading messy data (e.g. CSV where everything is a string):
 .. code-block:: python
 
     messy_df = pd.read_csv("data.csv")
-    customers = Customer.pf_coerce(messy_df)
+    customers = Customer(messy_df, coerce=True)
 
 
 Schema Introspection
@@ -182,7 +182,7 @@ Schema Introspection
 
 .. code-block:: python
 
-    for col in Customer.pf_schema_info():
+    for col in Customer.fr_schema_info():
         print(col["attribute"], col["type"], col["required"])
     # customer_id  int  True
     # ...

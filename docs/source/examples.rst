@@ -8,12 +8,11 @@ Insurance Risk Profile
 
 .. code-block:: python
 
-    from proteusframe import ProteusFramePandas, Field  # Backend-specific class
-    from proteusframe.typing import Col
+    from frameright.pandas import Schema, Col, Field
     from typing import Optional
     import pandas as pd
 
-    class RiskProfile(ProteusFramePandas):  # Explicitly uses pandas
+    class RiskProfile(Schema):  # Uses pandas backend
         """Schema for insurance risk data."""
         limit: Col[float] = Field(ge=0)
         """Policy limit."""
@@ -41,10 +40,9 @@ Insurance Risk Profile
 .. code-block:: python
 
     import polars as pl
-    from proteusframe import ProteusFramePolars, Field  # Backend-specific class
-    from proteusframe.typing.polars_eager import Col
+    from frameright.polars.eager import Schema, Col, Field
 
-    class RiskProfile(ProteusFramePolars):  # Explicitly uses polars eager
+    class RiskProfile(Schema):  # Uses polars eager backend
         limit: Col[float] = Field(ge=0)
         attachment: Col[float] = Field(ge=0)
         premium: Col[float] = Field(gt=0)
@@ -66,10 +64,9 @@ Insurance Risk Profile
 .. code-block:: python
 
     import polars as pl
-    from proteusframe import ProteusFramePolarsLazy, Field  # Backend-specific class
-    from proteusframe.typing.polars_lazy import Col
+    from frameright.polars.lazy import Schema, Col, Field
 
-    class LazyRiskProfile(ProteusFramePolarsLazy):  # Explicitly uses polars lazy
+    class LazyRiskProfile(Schema):  # Uses polars lazy backend
         limit: Col[float] = Field(ge=0)
         attachment: Col[float] = Field(ge=0)
         premium: Col[float] = Field(gt=0)
@@ -90,7 +87,7 @@ Insurance Risk Profile
     # ...
 
 Polars offers significant performance improvements for large datasets, especially with lazy evaluation.
-Use ``ProteusFramePolars`` for eager (Series) or ``ProteusFramePolarsLazy`` for lazy (Expr) schemas.
+Use ``frameright.polars.eager`` for eager (Series) or ``frameright.polars.lazy`` for lazy (Expr) schemas.
 The same schema logic works for both backends.
 
 
@@ -99,12 +96,12 @@ Data Pipeline with Strict Contracts
 
 .. code-block:: python
 
-    class RawOrders(ProteusFrame):
+    class RawOrders(Schema):
         order_id: Col[int] = Field(unique=True)
         item_price: Col[float] = Field(ge=0)
         quantity: Col[int] = Field(ge=1)
 
-    class ProcessedOrders(ProteusFrame):
+    class ProcessedOrders(Schema):
         order_id: Col[int] = Field(unique=True)
         item_price: Col[float] = Field(ge=0)
         quantity: Col[int] = Field(ge=1)
@@ -112,13 +109,14 @@ Data Pipeline with Strict Contracts
 
     def process_orders(raw: RawOrders) -> ProcessedOrders:
         \"\"\"Transform raw orders into processed orders with revenue.\"\"\"
-        df = raw.pf_data.copy()
+        df = raw.fr_data.copy()
         df["revenue"] = df["item_price"] * df["quantity"]
         return ProcessedOrders(df)
 
-    raw = RawOrders.pf_from_csv("orders.csv")
+    df = pd.read_csv("orders.csv")
+    raw = RawOrders(df)
     processed = process_orders(raw)
-    processed.pf_data.to_csv("processed_orders.csv", index=False)
+    processed.fr_data.to_csv("processed_orders.csv", index=False)
 
 
 Production Pattern: Validate at Boundaries
@@ -134,10 +132,10 @@ When a DataFrame starts getting passed across modules and teams, a useful rule o
 
     from __future__ import annotations
 
-    from proteusframe import ProteusFrame, Field
-    from proteusframe.typing import Col
+    from frameright import Schema, Field
+    from frameright.typing import Col
 
-    class Claims(ProteusFrame):
+    class Claims(Schema):
         claim_id: Col[int] = Field(unique=True, nullable=False)
         """Stable claim identifier."""
 
@@ -147,7 +145,7 @@ When a DataFrame starts getting passed across modules and teams, a useful rule o
         paid: Col[float] = Field(ge=0)
         """Paid loss."""
 
-    class ClaimsWithLossRatio(ProteusFrame):
+    class ClaimsWithLossRatio(Schema):
         claim_id: Col[int] = Field(unique=True, nullable=False)
         incurred: Col[float] = Field(gt=0)
         paid: Col[float] = Field(ge=0)
@@ -156,29 +154,17 @@ When a DataFrame starts getting passed across modules and teams, a useful rule o
 
     def add_loss_ratio(claims: Claims) -> ClaimsWithLossRatio:
         # Re-wrap without validating yet, because loss_ratio doesn't exist.
-        out = ClaimsWithLossRatio(claims.pf_data, validate=False)
+        out = ClaimsWithLossRatio(claims.fr_data, validate=False)
         out.loss_ratio = out.paid / out.incurred
-        return out.pf_validate()
+        return out.fr_validate()
 
     # Boundary validation: fail fast on bad inputs
-    claims = Claims.pf_from_csv("claims.csv")
+    df = pd.read_csv("claims.csv")
+    claims = Claims(df)
 
     enriched = add_loss_ratio(claims)
-    high_lr_df = enriched.pf_data[enriched.loss_ratio > 0.8]
+    high_lr_df = enriched.fr_data[enriched.loss_ratio > 0.8]
     high_lr = ClaimsWithLossRatio(high_lr_df, validate=False)
-
-
-Testing Pattern: Stable Fixtures with pf_example()
--------------------------------------------------
-
-For unit tests, it can be helpful to generate minimal valid data that always matches the schema:
-
-.. code-block:: python
-
-    def test_loss_ratio_is_nonnegative() -> None:
-        claims = Claims.pf_example(nrows=5)
-        enriched = add_loss_ratio(claims)
-        assert (enriched.loss_ratio >= 0).all()
 
 
 Column Aliasing
@@ -186,7 +172,7 @@ Column Aliasing
 
 .. code-block:: python
 
-    class LegacyData(ProteusFrame):
+    class LegacyData(Schema):
         \"\"\"Map clean Python names to messy column names.\"\"\"
         user_id: Col[int] = Field(alias="USER_ID_V2")
         signup_date: Col[str] = Field(alias="dt_signup_YYYYMMDD")

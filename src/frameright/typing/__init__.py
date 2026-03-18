@@ -1,12 +1,12 @@
-"""Generic column and index types for ProteusFrame.
+"""Generic column and index types for Schema.
 
-Col[T] is a generic type used for type annotations in ProteusFrame schemas.
+Col[T] is a generic type used for type annotations in Schema schemas.
 
 For backend-specific imports:
-- ``from proteusframe.typing.pandas import Col``
-- ``from proteusframe.typing.polars_eager import Col``  # Polars DataFrame (eager)
-- ``from proteusframe.typing.polars_lazy import Col``   # Polars LazyFrame (lazy)
-- ``from proteusframe.typing.narwhals import Col``
+- ``from frameright.typing.pandas import Col``
+- ``from frameright.typing.polars_eager import Col``  # Polars DataFrame (eager)
+- ``from frameright.typing.polars_lazy import Col``   # Polars LazyFrame (lazy)
+- ``from frameright.typing.narwhals import Col``
 
 At runtime, Col is a lightweight generic sentinel used by
 ``__init_subclass__`` to detect annotated columns. At type-check time,
@@ -37,18 +37,18 @@ if TYPE_CHECKING:
     # Type checkers see pandas Series/Index, preserving inner type T
 
     Col: TypeAlias = pd.Series[T]
-    Index: TypeAlias = pd.Index[T]  # type: ignore[misc]
+    Index: TypeAlias = pd.Index[T]
 
 
 else:
 
     class Col(Generic[T]):
-        """Generic column type marker for ProteusFrame schemas."""
+        """Generic column type marker for Schema schemas."""
 
         pass
 
     class Index(Generic[T]):
-        """Generic index type marker for ProteusFrame schemas."""
+        """Generic index type marker for Schema schemas."""
 
         pass
 

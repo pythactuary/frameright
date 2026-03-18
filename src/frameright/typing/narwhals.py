@@ -1,12 +1,12 @@
-"""Narwhals-specific type aliases for ProteusFrame.
+"""Narwhals-specific type aliases for Schema.
 
 Use these when working with narwhals DataFrames for backend-agnostic code::
 
-    from proteusframe import ProteusFrame, Field
-    from proteusframe.typing.narwhals import Col
+    from frameright import Schema, Field
+    from frameright.typing.narwhals import Col
     import narwhals as nw
 
-    class MyFrame(ProteusFrame):
+    class MyFrame(Schema):
         col_a: Col[int]  # Type checkers see nw.Series
         col_b: Col[str]
 
@@ -17,7 +17,7 @@ Use these when working with narwhals DataFrames for backend-agnostic code::
 
 from typing import TYPE_CHECKING, Generic, TypeVar
 
-from proteusframe.typing import Col as _RuntimeCol
+from frameright.typing import Col as _RuntimeCol
 
 T = TypeVar("T")
 

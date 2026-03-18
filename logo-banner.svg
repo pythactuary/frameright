@@ -50,12 +50,12 @@
   
   <!-- Main title -->
   <text x="280" y="130" font-family="'Segoe UI', Arial, sans-serif" font-size="80" font-weight="bold" 
-        fill="url(#bannerRing)" letter-spacing="3">ProteusFrame</text>
+        fill="url(#bannerRing)" letter-spacing="3">FrameRight</text>
   
   <!-- Subtitle -->
   <text x="280" y="180" font-family="'Segoe UI', Arial, sans-serif" font-size="28" 
         fill="#4DFFDF" opacity="0.9" letter-spacing="2">
-    Type-Safe, Multi-Backend DataFrames for Python
+    Statically Typed, Object-DataFrame Mapper for Python
   </text>
   
   <!-- Feature badges -->

@@ -3,7 +3,7 @@ requires = ["setuptools>=61.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "proteusframe"
+name = "frameright"
 version = "0.3.0"
 authors = [
   { name="Your Name", email="your.email@example.com" },
@@ -15,7 +15,6 @@ requires-python = ">=3.9"
 dependencies = [
     "pandas>=1.5.0",
     "pandera>=0.20.0",
-    "narwhals>=1.0.0",
     "typing-extensions>=4.0.0",
 ]
 classifiers = [
@@ -37,6 +36,9 @@ keywords = ["pandas", "polars", "dataframe", "typing", "validation", "schema", "
 polars = [
     "polars>=0.20.0",
 ]
+narwhals = [
+    "narwhals>=1.0.0",
+    ]
 dev = [
     "pytest>=7.0",
     "pytest-cov>=4.0",
@@ -54,10 +56,10 @@ docs = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/yourusername/proteusframe"
-Documentation = "https://proteusframe.readthedocs.io"
-Repository = "https://github.com/yourusername/proteusframe"
-"Bug Tracker" = "https://github.com/yourusername/proteusframe/issues"
+Homepage = "https://github.com/yourusername/frameright"
+Documentation = "https://frameright.readthedocs.io"
+Repository = "https://github.com/yourusername/frameright"
+"Bug Tracker" = "https://github.com/yourusername/frameright/issues"
 
 [tool.setuptools]
 package-dir = {"" = "src"}
@@ -66,7 +68,7 @@ package-dir = {"" = "src"}
 where = ["src"]
 
 [tool.setuptools.package-data]
-proteusframe = ["py.typed"]
+frameright = ["py.typed"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
@@ -76,7 +78,7 @@ python_functions = ["test_*"]
 addopts = "--tb=short"
 
 [tool.coverage.run]
-source = ["src/proteusframe"]
+source = ["src/frameright"]
 omit = [
     "*/tests/*",
     "*/__pycache__/*",
@@ -110,7 +112,7 @@ ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
 module = [
-    "proteusframe.backends.*",
+    "frameright.backends.*",
 ]
 # Backend implementations interact with external libraries (pandas, polars)
 # that have complex/incomplete type stubs. Allow some flexibility here.

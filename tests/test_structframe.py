@@ -1,36 +1,39 @@
-import pytest
+from datetime import date, datetime
+from typing import Optional
+
 import pandas as pd
-from datetime import datetime, date
-from proteusframe import ProteusFrame, Field, FieldInfo
-from proteusframe.typing import Col, Index
-from proteusframe.exceptions import (
-    MissingColumnError,
-    TypeMismatchError,
+import pytest
+
+from frameright import Field, FieldInfo
+from frameright.exceptions import (
     ConstraintViolationError,
-    ProteusFrameError,
+    MissingColumnError,
     SchemaError,
+    StructFrameError,
+    TypeMismatchError,
     ValidationError,
 )
-from typing import Optional, Union
-
+from frameright.pandas import Col, Index, Schema
 
 # ---------------------------------------------------------------------------
 # Schema Definitions for Testing
 # ---------------------------------------------------------------------------
 
 
-class UserData(ProteusFrame):
+class UserData(Schema):
     """Kitchen-sink schema covering all features."""
 
     user_id: Col[int] = Field(unique=True)
     username: Col[str] = Field(min_length=1)
     is_active: Col[bool] = Field(nullable=False)
     engagement_score: Col[float] = Field(ge=0.0, le=100.0)
-    tier: Col[str] = Field(alias="SUBSCRIPTION_TIER", isin=["Free", "Pro", "Enterprise"])
+    tier: Col[str] = Field(
+        alias="SUBSCRIPTION_TIER", isin=["Free", "Pro", "Enterprise"]
+    )
     lifetime_value: Optional[Col[float]] = Field(ge=0.0)
 
 
-class StrictSchema(ProteusFrame):
+class StrictSchema(Schema):
     """Schema with strict non-nullable, unique constraints."""
 
     id: Col[int] = Field(unique=True, nullable=False)
@@ -38,7 +41,7 @@ class StrictSchema(ProteusFrame):
     value: Col[float] = Field(gt=0, lt=1000)
 
 
-class MinimalSchema(ProteusFrame):
+class MinimalSchema(Schema):
     """Simplest possible schema."""
 
     col_a: Col[int]
@@ -94,7 +97,7 @@ class TestInitialization:
         users = UserData(valid_df)
         assert len(users) == 3
         assert users.tier[0] == "Pro"
-        assert users.is_active[1] == False
+        assert not users.is_active[1]
 
     def test_copy_flag_creates_independent_copy(self, valid_df):
         """copy=True should create an independent copy of the data."""
@@ -271,95 +274,51 @@ class TestProperties:
         """Aliased properties access the correct DataFrame column."""
         users = UserData(valid_df)
         assert users.tier[0] == "Pro"
-        assert "SUBSCRIPTION_TIER" in users.pf_data.columns
+        assert "SUBSCRIPTION_TIER" in users.fr_data.columns
 
 
 # ===========================================================================
-# SECTION 6: Core Methods (pf_ prefixed)
+# SECTION 6: Core Methods (fr_ prefixed)
 # ===========================================================================
 
 
 class TestCoreMethods:
-    def test_pf_data_returns_dataframe(self, valid_df):
-        """pf_data returns the underlying DataFrame."""
+    def test_fr_data_returns_dataframe(self, valid_df):
+        """fr_data returns the underlying DataFrame."""
         users = UserData(valid_df)
-        assert isinstance(users.pf_data, pd.DataFrame)
+        assert isinstance(users.fr_data, pd.DataFrame)
 
-    def test_pf_index_returns_index(self, valid_df):
-        """pf_index returns the DataFrame index."""
-        users = UserData(valid_df)
-        assert isinstance(users.pf_index, pd.Index)
-        assert len(users.pf_index) == 3
-
-    def test_pf_validate_returns_self(self, valid_df):
-        """pf_validate returns self for method chaining."""
+    def test_fr_validate_returns_self(self, valid_df):
+        """fr_validate returns self for method chaining."""
         users = UserData(valid_df, validate=False)
-        result = users.pf_validate()
+        result = users.fr_validate()
         assert result is users
 
 
 # ===========================================================================
-# SECTION 7: Factory Methods
-# ===========================================================================
-
-
-class TestFactoryMethods:
-    def test_pf_from_dict(self):
-        """pf_from_dict creates a ProteusFrame from a dictionary."""
-        data = {"col_a": [1, 2, 3], "col_b": ["x", "y", "z"]}
-        obj = MinimalSchema.pf_from_dict(data)
-        assert isinstance(obj, MinimalSchema)
-        assert len(obj) == 3
-
-    def test_pf_from_records(self):
-        """pf_from_records creates a ProteusFrame from a list of dicts."""
-        records = [
-            {"col_a": 1, "col_b": "x"},
-            {"col_a": 2, "col_b": "y"},
-        ]
-        obj = MinimalSchema.pf_from_records(records)
-        assert isinstance(obj, MinimalSchema)
-        assert len(obj) == 2
-
-    def test_pf_from_csv(self, tmp_path):
-        """pf_from_csv loads from a CSV file."""
-        csv_path = tmp_path / "test.csv"
-        pd.DataFrame({"col_a": [1, 2], "col_b": ["a", "b"]}).to_csv(csv_path, index=False)
-        obj = MinimalSchema.pf_from_csv(str(csv_path))
-        assert isinstance(obj, MinimalSchema)
-        assert len(obj) == 2
-
-    def test_pf_example(self):
-        """pf_example generates dummy data."""
-        obj = MinimalSchema.pf_example(nrows=5)
-        assert isinstance(obj, MinimalSchema)
-        assert len(obj) == 5
-
-
-# ===========================================================================
-# SECTION 8: Type Coercion
+# SECTION 7: Example Data Generation
 # ===========================================================================
 
 
 class TestCoercion:
-    def test_pf_coerce_strings_to_int(self):
-        """pf_coerce converts string columns to match int annotation."""
+    def test_coerce_strings_to_int(self):
+        """Constructor with coerce=True converts string columns to match int annotation."""
         df = pd.DataFrame({"col_a": ["1", "2", "3"], "col_b": ["a", "b", "c"]})
-        obj = MinimalSchema.pf_coerce(df)
+        obj = MinimalSchema(df, coerce=True)
         assert isinstance(obj, MinimalSchema)
         assert obj.col_a[0] == 1
 
-    def test_pf_coerce_preserves_valid_types(self):
-        """pf_coerce doesn't break columns that already have the right dtype."""
+    def test_coerce_preserves_valid_types(self):
+        """Coercion doesn't break columns that already have the right dtype."""
         df = pd.DataFrame({"col_a": [1, 2, 3], "col_b": ["a", "b", "c"]})
-        obj = MinimalSchema.pf_coerce(df)
+        obj = MinimalSchema(df, coerce=True)
         assert len(obj) == 3
 
-    def test_pf_coerce_raises_on_invalid(self):
-        """pf_coerce raises TypeError when conversion is impossible."""
+    def test_coerce_raises_on_invalid(self):
+        """Coercion raises TypeError when conversion is impossible."""
         df = pd.DataFrame({"col_a": ["not_a_number"], "col_b": ["a"]})
         with pytest.raises(TypeError, match="coerce"):
-            MinimalSchema.pf_coerce(df)
+            MinimalSchema(df, coerce=True)
 
 
 # ===========================================================================
@@ -368,9 +327,9 @@ class TestCoercion:
 
 
 class TestSchemaIntrospection:
-    def test_pf_schema_info_returns_list(self):
-        """pf_schema_info returns a list of dicts describing the schema."""
-        info = UserData.pf_schema_info()
+    def test_fr_schema_info_returns_list(self):
+        """fr_schema_info returns a list of dicts describing the schema."""
+        info = UserData.fr_schema_info()
         assert isinstance(info, list)
         assert len(info) > 0
         assert isinstance(info[0], dict)
@@ -379,18 +338,18 @@ class TestSchemaIntrospection:
         assert "type" in info[0]
         assert "required" in info[0]
 
-    def test_pf_schema_info_correct_content(self):
-        """pf_schema_info contains correct schema details."""
-        info = UserData.pf_schema_info()
+    def test_fr_schema_info_correct_content(self):
+        """fr_schema_info contains correct schema details."""
+        info = UserData.fr_schema_info()
         tier_row = next(r for r in info if r["attribute"] == "tier")
         assert tier_row["column"] == "SUBSCRIPTION_TIER"
-        assert tier_row["required"] == True
+        assert tier_row["required"]
 
-    def test_pf_schema_info_shows_optional(self):
-        """pf_schema_info correctly marks optional columns."""
-        info = UserData.pf_schema_info()
+    def test_fr_schema_info_shows_optional(self):
+        """fr_schema_info correctly marks optional columns."""
+        info = UserData.fr_schema_info()
         ltv_row = next(r for r in info if r["attribute"] == "lifetime_value")
-        assert ltv_row["required"] == False
+        assert not ltv_row["required"]
 
 
 # ===========================================================================
@@ -433,7 +392,7 @@ class TestPythonProtocols:
     def test_eq_different_type(self, valid_df):
         """__eq__ returns NotImplemented for different types."""
         users = UserData(valid_df)
-        assert users.__eq__("not a structframe") is NotImplemented
+        assert users.__eq__("not a frameright") is NotImplemented
 
     def test_contains(self, valid_df):
         """__contains__ supports 'col in obj' syntax."""
@@ -447,7 +406,7 @@ class TestPythonProtocols:
 # ---------------------------------------------------------------------------
 
 
-class IndexedSchema(ProteusFrame):
+class IndexedSchema(Schema):
     """Schema with an Index[T] annotation."""
 
     row_id: Index[int]
@@ -474,26 +433,16 @@ class TestIndexType:
         obj = IndexedSchema(indexed_df, validate=False)
         new_idx = pd.Index([100, 200, 300])
         obj.row_id = new_idx
-        pd.testing.assert_index_equal(obj.pf_data.index, new_idx)
+        pd.testing.assert_index_equal(obj.fr_data.index, new_idx)
 
     def test_index_not_in_schema(self, indexed_df):
-        """Index[T] attribute should NOT appear in _pf_schema."""
-        assert "row_id" not in IndexedSchema._pf_schema
-
-    def test_index_attr_tracked(self, indexed_df):
-        """_pf_index_attrs stores the index metadata."""
-        assert len(IndexedSchema._pf_index_attrs) == 1
-        assert IndexedSchema._pf_index_attrs[0]["name"] == "row_id"
-        assert IndexedSchema._pf_index_attrs[0]["inner_type"] is int
+        """Index[T] attribute should NOT appear in _fr_schema."""
+        assert "row_id" not in IndexedSchema._fr_schema
 
     def test_index_does_not_interfere_with_validation(self, indexed_df):
         """Validation should only check Col columns, not Index."""
         obj = IndexedSchema(indexed_df, validate=True)
         assert len(obj) == 3
-
-    def test_schema_without_index(self):
-        """Schemas without Index[T] have empty _pf_index_attrs."""
-        assert UserData._pf_index_attrs == []
 
 
 # ---------------------------------------------------------------------------
@@ -501,7 +450,7 @@ class TestIndexType:
 # ---------------------------------------------------------------------------
 
 
-class MultiIndexSchema(ProteusFrame):
+class MultiIndexSchema(Schema):
     """Schema with two Index[T] annotations for MultiIndex."""
 
     a: Index[int]
@@ -515,22 +464,16 @@ class TestMultiIndex:
     @pytest.fixture()
     def multi_df(self):
         df = pd.DataFrame({"c": [1.0, 2.0, 3.0]})
-        df.index = pd.MultiIndex.from_arrays([[10, 20, 30], ["x", "y", "z"]], names=["a", "b"])
+        df.index = pd.MultiIndex.from_arrays(
+            [[10, 20, 30], ["x", "y", "z"]], names=["a", "b"]
+        )
         return df
 
-    def test_multi_index_attrs_tracked(self):
-        """_pf_index_attrs contains both index entries."""
-        assert len(MultiIndexSchema._pf_index_attrs) == 2
-        assert MultiIndexSchema._pf_index_attrs[0]["name"] == "a"
-        assert MultiIndexSchema._pf_index_attrs[0]["inner_type"] is int
-        assert MultiIndexSchema._pf_index_attrs[1]["name"] == "b"
-        assert MultiIndexSchema._pf_index_attrs[1]["inner_type"] is str
-
     def test_multi_index_not_in_schema(self):
-        """Index attributes should not appear in _pf_schema."""
-        assert "a" not in MultiIndexSchema._pf_schema
-        assert "b" not in MultiIndexSchema._pf_schema
-        assert "c" in MultiIndexSchema._pf_schema
+        """Index attributes should not appear in _fr_schema."""
+        assert "a" not in MultiIndexSchema._fr_schema
+        assert "b" not in MultiIndexSchema._fr_schema
+        assert "c" in MultiIndexSchema._fr_schema
 
     def test_multi_index_getter_level_a(self, multi_df):
         """Getter for first index level returns correct values."""
@@ -548,10 +491,10 @@ class TestMultiIndex:
         """Setter replaces one level of the MultiIndex."""
         obj = MultiIndexSchema(multi_df, validate=False)
         obj.a = pd.Index([100, 200, 300])
-        result = obj.pf_data.index.get_level_values("a")
+        result = obj.fr_data.index.get_level_values("a")
         pd.testing.assert_index_equal(result, pd.Index([100, 200, 300], name="a"))
         # Other level unchanged
-        result_b = obj.pf_data.index.get_level_values("b")
+        result_b = obj.fr_data.index.get_level_values("b")
         pd.testing.assert_index_equal(result_b, pd.Index(["x", "y", "z"], name="b"))
 
     def test_multi_index_col_access(self, multi_df):
@@ -564,25 +507,19 @@ class TestMultiIndex:
         obj = MultiIndexSchema(multi_df, validate=True)
         assert len(obj) == 3
 
-    def test_multi_index_pf_index_returns_full_multiindex(self, multi_df):
-        """pf_index returns the full MultiIndex object."""
-        obj = MultiIndexSchema(multi_df, validate=False)
-        assert isinstance(obj.pf_index, pd.MultiIndex)
-        pd.testing.assert_index_equal(obj.pf_index, multi_df.index)
-
 
 # ===========================================================================
 # SECTION 13: Additional Schema Definitions
 # ===========================================================================
 
 
-class MaxLengthSchema(ProteusFrame):
+class MaxLengthSchema(Schema):
     """Schema with max_length constraint."""
 
     label: Col[str] = Field(max_length=5)
 
 
-class DateTimeSchema(ProteusFrame):
+class DateTimeSchema(Schema):
     """Schema with datetime and date columns."""
 
     event_time: Col[datetime]
@@ -590,7 +527,7 @@ class DateTimeSchema(ProteusFrame):
     label: Col[str]
 
 
-class DescribedSchema(ProteusFrame):
+class DescribedSchema(Schema):
     """Schema using docstring descriptions."""
 
     amount: Col[float] = Field(ge=0)
@@ -599,14 +536,14 @@ class DescribedSchema(ProteusFrame):
     """ISO currency code"""
 
 
-class UnionColSchema(ProteusFrame):
-    """Schema with Union type inside Col."""
+class UnionColSchema(Schema):
+    """Schema with Optional column."""
 
-    name: Col[Union[str, None]]
+    name: Optional[Col[str]]
     value: Col[float]
 
 
-class PrivateAttrSchema(ProteusFrame):
+class PrivateAttrSchema(Schema):
     """Schema that also has a private attribute."""
 
     _internal: int = 42
@@ -614,13 +551,13 @@ class PrivateAttrSchema(ProteusFrame):
     col_b: Col[str]
 
 
-class EmptySchema(ProteusFrame):
+class EmptySchema(Schema):
     """Schema with no columns defined."""
 
     pass
 
 
-class ParentSchema(ProteusFrame):
+class ParentSchema(Schema):
     """Base schema for inheritance testing."""
 
     id: Col[int] = Field(unique=True)
@@ -633,7 +570,7 @@ class ChildSchema(ParentSchema):
     score: Col[float] = Field(ge=0)
 
 
-class AllTypesSchema(ProteusFrame):
+class AllTypesSchema(Schema):
     """Schema with every supported dtype."""
 
     i: Col[int]
@@ -736,13 +673,14 @@ class TestDateTimeDtype:
 class TestUnionCol:
     def test_union_col_nullable_str(self):
         """Col[Union[str, None]] correctly resolves inner type to str."""
-        schema = UnionColSchema._pf_schema
+        schema = UnionColSchema._fr_schema
         assert schema["name"]["inner_type"] is str
 
     def test_union_col_validates(self):
         """Col[Union[str, None]] validates correctly."""
         df = pd.DataFrame({"name": ["alice", "bob"], "value": [1.0, 2.0]})
         obj = UnionColSchema(df)
+        assert obj.name is not None
         assert obj.name[0] == "alice"
 
 
@@ -753,9 +691,9 @@ class TestUnionCol:
 
 class TestPrivateAttributes:
     def test_private_attrs_not_in_schema(self):
-        """Attributes starting with _ should not be in _pf_schema."""
-        assert "_internal" not in PrivateAttrSchema._pf_schema
-        assert "col_a" in PrivateAttrSchema._pf_schema
+        """Attributes starting with _ should not be in _fr_schema."""
+        assert "_internal" not in PrivateAttrSchema._fr_schema
+        assert "col_a" in PrivateAttrSchema._fr_schema
 
     def test_private_attrs_preserved(self):
         """Private class attributes remain accessible."""
@@ -792,7 +730,31 @@ class TestEdgeCases:
         """Extra columns in the DataFrame beyond the schema are allowed."""
         df = pd.DataFrame({"col_a": [1], "col_b": ["x"], "extra": [99]})
         obj = MinimalSchema(df)
-        assert "extra" in obj.pf_data.columns
+        assert "extra" in obj.fr_data.columns
+
+    def test_strict_false_allows_extra_columns(self):
+        """strict=False (default) allows extra columns."""
+        df = pd.DataFrame({"col_a": [1], "col_b": ["x"], "extra": [99]})
+        obj = MinimalSchema(df, strict=False)
+        assert "extra" in obj.fr_data.columns
+
+    def test_strict_true_rejects_extra_columns(self):
+        """strict=True rejects DataFrames with extra columns."""
+        df = pd.DataFrame({"col_a": [1], "col_b": ["x"], "extra": [99]})
+        with pytest.raises(ValidationError) as exc_info:
+            MinimalSchema(df, strict=True)
+        # Should mention the extra column
+        assert (
+            "extra" in str(exc_info.value).lower()
+            or "strict" in str(exc_info.value).lower()
+        )
+
+    def test_strict_true_accepts_exact_columns(self):
+        """strict=True accepts DataFrames with exactly the schema columns."""
+        df = pd.DataFrame({"col_a": [1, 2], "col_b": ["x", "y"]})
+        obj = MinimalSchema(df, strict=True)
+        assert len(obj) == 2
+        assert list(obj.fr_data.columns) == ["col_a", "col_b"]
 
 
 # ===========================================================================
@@ -803,9 +765,9 @@ class TestEdgeCases:
 class TestSchemaInheritance:
     def test_child_inherits_parent_columns(self):
         """Child schema includes parent's columns."""
-        assert "id" in ChildSchema._pf_schema
-        assert "name" in ChildSchema._pf_schema
-        assert "score" in ChildSchema._pf_schema
+        assert "id" in ChildSchema._fr_schema
+        assert "name" in ChildSchema._fr_schema
+        assert "score" in ChildSchema._fr_schema
 
     def test_child_validates_all_columns(self):
         """Child schema validates both parent and child columns."""
@@ -844,18 +806,18 @@ class TestExceptionHierarchy:
         """ConstraintViolationError is a subclass of ValidationError."""
         assert issubclass(ConstraintViolationError, ValidationError)
 
-    def test_validation_error_is_structframe_error(self):
-        """ValidationError is a subclass of ProteusFrameError."""
-        assert issubclass(ValidationError, ProteusFrameError)
+    def test_validation_error_is_frameright_error(self):
+        """ValidationError is a subclass of StructFrameError."""
+        assert issubclass(ValidationError, StructFrameError)
 
-    def test_schema_error_is_structframe_error(self):
-        """SchemaError is a subclass of ProteusFrameError."""
-        assert issubclass(SchemaError, ProteusFrameError)
+    def test_schema_error_is_frameright_error(self):
+        """SchemaError is a subclass of StructFrameError."""
+        assert issubclass(SchemaError, StructFrameError)
 
     def test_catch_all_with_base(self):
-        """All errors can be caught with ProteusFrameError."""
+        """All errors can be caught with StructFrameError."""
         df = pd.DataFrame({"wrong": [1]})
-        with pytest.raises(ProteusFrameError):
+        with pytest.raises(StructFrameError):
             MinimalSchema(df)
 
 
@@ -863,83 +825,66 @@ class TestExceptionHierarchy:
 
 
 # ===========================================================================
-# SECTION 24: pf_coerce Additional Cases
+# SECTION 24: Type Coercion Additional Cases
 # ===========================================================================
 
 
 class TestCoerceAdditional:
-    def test_pf_coerce_strings_to_float(self):
-        """pf_coerce converts string columns to float."""
+    class FloatSchema(Schema):
+        val: Col[float]
 
-        class FloatSchema(ProteusFrame):
-            val: Col[float]
+    def test_coerce_strings_to_float(self):
+        """Coercion converts string columns to float."""
 
         df = pd.DataFrame({"val": ["1.5", "2.5", "3.5"]})
-        obj = FloatSchema.pf_coerce(df)
+        obj = self.FloatSchema(df, coerce=True)
         assert obj.val[0] == 1.5
 
-    def test_pf_coerce_to_bool(self):
-        """pf_coerce converts to bool."""
+    def test_coerce_to_bool(self):
+        """Coercion converts to bool."""
 
-        class BoolSchema(ProteusFrame):
+        class BoolSchema(Schema):
             flag: Col[bool] = Field(nullable=False)
 
         df = pd.DataFrame({"flag": [1, 0, 1]})
-        obj = BoolSchema.pf_coerce(df)
-        assert obj.flag[0] == True
+        obj = BoolSchema(df, coerce=True)
+        assert obj.flag[0]
 
-    def test_pf_coerce_to_datetime(self):
-        """pf_coerce converts strings to datetime."""
+    def test_coerce_to_datetime(self):
+        """Coercion converts strings to datetime."""
 
-        class DtSchema(ProteusFrame):
+        class DtSchema(Schema):
             ts: Col[datetime]
 
         df = pd.DataFrame({"ts": ["2024-01-01", "2024-06-15"]})
-        obj = DtSchema.pf_coerce(df)
+        obj = DtSchema(df, coerce=True)
         assert pd.api.types.is_datetime64_any_dtype(obj.ts)
 
-    def test_pf_coerce_missing_column_skipped(self):
-        """pf_coerce skips columns not present in dataframe."""
+    def test_coerce_missing_column_skipped(self):
+        """Coercion skips columns not present in dataframe."""
         df = pd.DataFrame({"col_a": ["1", "2"], "col_b": ["a", "b"]})
         # Should not error even though we don't have missing optional cols
-        obj = MinimalSchema.pf_coerce(df)
+        obj = MinimalSchema(df, coerce=True)
         assert len(obj) == 2
 
 
 # ===========================================================================
-# SECTION 25: pf_example All Types
-# ===========================================================================
-
-
-class TestExampleAllTypes:
-    def test_pf_example_all_types(self):
-        """pf_example generates correct dummy data for every supported type."""
-        obj = AllTypesSchema.pf_example(nrows=4)
-        assert len(obj) == 4
-        assert pd.api.types.is_integer_dtype(obj.i)
-        assert pd.api.types.is_float_dtype(obj.f)
-        assert pd.api.types.is_string_dtype(obj.s) or pd.api.types.is_object_dtype(obj.s)
-        assert pd.api.types.is_bool_dtype(obj.b)
-        assert pd.api.types.is_datetime64_any_dtype(obj.dt)
-
-
-# ===========================================================================
-# SECTION 26: pf_validate After Mutation
+# SECTION 25: fr_validate After Mutation
 # ===========================================================================
 
 
 class TestRevalidation:
     def test_revalidate_catches_mutation(self, valid_df):
-        """pf_validate catches invalid data after mutation."""
+        """fr_validate catches invalid data after mutation."""
         users = UserData(valid_df, validate=True)
         users.engagement_score = pd.Series([-5.0, 200.0, 50.0])
         with pytest.raises(ConstraintViolationError):
-            users.pf_validate()
+            users.fr_validate()
 
     def test_revalidate_passes_after_fix(self, valid_df):
-        """pf_validate passes after fixing mutated data."""
+        """fr_validate passes after fixing mutated data."""
         users = UserData(valid_df, validate=False)
-        result = users.pf_validate()
+        result = users.fr_validate()
         assert result is users
 
 
@@ -988,12 +933,12 @@ class TestReprDetails:
 
 
 class TestEqCrossType:
-    def test_eq_different_structframe_subclass(self):
-        """__eq__ returns NotImplemented for different ProteusFrame subclasses."""
+    def test_eq_different_frameright_subclass(self):
+        """__eq__ returns NotImplemented for different Schema subclasses."""
         df = pd.DataFrame({"col_a": [1], "col_b": ["x"]})
         a = MinimalSchema(df)
 
-        class OtherSchema(ProteusFrame):
+        class OtherSchema(Schema):
             col_a: Col[int]
             col_b: Col[str]
 
@@ -1002,14 +947,14 @@ class TestEqCrossType:
 
 
 # ===========================================================================
-# SECTION 30: pf_schema_info Full Content
+# SECTION 30: fr_schema_info Full Content
 # ===========================================================================
 
 
 class TestSchemaInfoFull:
     def test_schema_info_has_all_keys(self):
-        """pf_schema_info dicts include nullable, unique, constraints, description."""
-        info = DescribedSchema.pf_schema_info()
+        """fr_schema_info dicts include nullable, unique, constraints, description."""
+        info = DescribedSchema.fr_schema_info()
         keys = info[0].keys()
         assert "nullable" in keys
         assert "unique" in keys
@@ -1017,55 +962,39 @@ class TestSchemaInfoFull:
         assert "description" in keys
 
     def test_schema_info_description_values(self):
-        """pf_schema_info stores description correctly."""
-        info = DescribedSchema.pf_schema_info()
+        """fr_schema_info stores description correctly."""
+        info = DescribedSchema.fr_schema_info()
         amt_row = next(r for r in info if r["attribute"] == "amount")
         assert amt_row["description"] == "Transaction amount in USD"
 
     def test_schema_info_constraints_dict(self):
-        """pf_schema_info stores constraints as a dict."""
-        info = DescribedSchema.pf_schema_info()
+        """fr_schema_info stores constraints as a dict."""
+        info = DescribedSchema.fr_schema_info()
         amt_row = next(r for r in info if r["attribute"] == "amount")
         assert isinstance(amt_row["constraints"], dict)
         assert "ge" in amt_row["constraints"]
 
     def test_schema_info_nullable_and_unique(self):
-        """pf_schema_info stores nullable and unique flags."""
-        info = StrictSchema.pf_schema_info()
+        """fr_schema_info stores nullable and unique flags."""
+        info = StrictSchema.fr_schema_info()
         id_row = next(r for r in info if r["attribute"] == "id")
-        assert id_row["nullable"] == False
-        assert id_row["unique"] == True
+        assert not id_row["nullable"]
+        assert id_row["unique"]
 
 
 # ===========================================================================
-# SECTION 31: pf_from_dict kwargs passthrough
+# SECTION 31: fr_from_dict kwargs passthrough
 # ===========================================================================
 
 
-class TestFactoryKwargs:
-    def test_pf_from_dict_validate_false(self):
-        """pf_from_dict passes kwargs to constructor."""
-        data = {"col_a": ["not_int"], "col_b": ["x"]}
-        # Should not raise because validate=False is passed through
-        obj = MinimalSchema.pf_from_dict(data, validate=False)
-        assert len(obj) == 1
+import pytest  # noqa: E402
 
-    def test_pf_from_records_validate_false(self):
-        """pf_from_records passes kwargs to constructor."""
-        records = [{"col_a": "not_int", "col_b": "x"}]
-        obj = MinimalSchema.pf_from_records(records, validate=False)
-        assert len(obj) == 1
-
-
-import pandas as pd
-import pytest
-from proteusframe import ProteusFrame, Field
-from proteusframe.typing import Col
-from proteusframe.exceptions import TypeMismatchError
+from frameright import Field  # noqa: E402
+from frameright.pandas import Col, Schema  # noqa: E402
 
 
 def test_integer_coercion_nullable():
-    class IntSchema(ProteusFrame):
+    class IntSchema(Schema):
         count: Col[int] = Field(nullable=True)
 
     # DataFrame with strings that can be coerced, and a None
@@ -1074,7 +1003,7 @@ def test_integer_coercion_nullable():
     # This should coerce to Int64 [1, 2, <NA>]
     # Before the fix, errors='coerce' would produce float64 with NaNs [1.0, 2.0, NaN]
     # which is technically allowed as numeric, but Int64 is preferred for Col[int]
-    obj = IntSchema.pf_coerce(df, errors="coerce")
+    obj = IntSchema(df, coerce=True, coerce_errors="coerce")
 
     assert str(obj.count.dtype) == "Int64"
     assert obj.count[0] == 1
@@ -1082,39 +1011,39 @@ def test_integer_coercion_nullable():
 
 
 def test_integer_coercion_with_floats_safe():
-    class IntSchema(ProteusFrame):
+    class IntSchema(Schema):
         count: Col[int]
 
     # Integers represented as floats (e.g. from JSON)
     df = pd.DataFrame({"count": [1.0, 2.0]})
 
-    obj = IntSchema.pf_coerce(df)
+    obj = IntSchema(df, coerce=True)
     assert str(obj.count.dtype) == "Int64"
     assert obj.count[0] == 1
 
 
 def test_integer_coercion_with_floats_lossy():
-    class IntSchema(ProteusFrame):
+    class IntSchema(Schema):
         count: Col[int]
 
     # Real floats
     df = pd.DataFrame({"count": [1.5, 2.0]})
 
-    # pf_coerce -> to_numeric -> [1.5, 2.0] (float)
+    # coerce -> to_numeric -> [1.5, 2.0] (float)
     # astype("Int64") -> TypeError (cannot safely cast) -> catch -> keep float
-    # pf_validate -> checks is_integer_dtype(float) -> False -> Raises TypeMismatchError
+    # fr_validate -> checks is_integer_dtype(float) -> False -> Raises TypeMismatchError
 
     # This ensures we don't silently truncate 1.5 to 1
     with pytest.raises(TypeMismatchError):
-        IntSchema.pf_coerce(df)
+        IntSchema(df, coerce=True)
 
 
 def test_boolean_coercion_strings():
-    class BoolSchema(ProteusFrame):
+    class BoolSchema(Schema):
         flag: Col[bool]
 
     df = pd.DataFrame({"flag": ["True", "false", "YES", "no", "1", "0"]})
-    obj = BoolSchema.pf_coerce(df)
+    obj = BoolSchema(df, coerce=True)
 
     expected = [True, False, True, False, True, False]
     assert obj.flag.to_list() == expected
@@ -1123,7 +1052,7 @@ def test_boolean_coercion_strings():
 def test_nullable_constraint_logic_detailed():
     """Verify fix for the critical bug + other constraints."""
 
-    class ConstraintSchema(ProteusFrame):
+    class ConstraintSchema(Schema):
         val: Col[float] = Field(ge=0, le=10, nullable=True)
         code: Col[str] = Field(min_length=3, nullable=True)
 
@@ -1141,7 +1070,7 @@ def test_nullable_constraint_logic_detailed():
         }
     )
 
-    from proteusframe.exceptions import ConstraintViolationError
+    from frameright.exceptions import ConstraintViolationError
 
     with pytest.raises(ConstraintViolationError) as exc:
         ConstraintSchema(df_fail)
@@ -1157,7 +1086,7 @@ def test_non_col_annotation_raises_schema_error():
     """Schema parsing should reject annotations that are not Col[T] or Optional[Col[T]]."""
     with pytest.raises(SchemaError) as exc:
 
-        class BadSchema(ProteusFrame):
+        class BadSchema(Schema):
             price: float  # Missing Col[] wrapper
             name: Col[str]
 
@@ -1169,7 +1098,7 @@ def test_typo_col_annotation_raises_schema_error():
     """Typos like Col[flaot] should still be caught as schema errors."""
     with pytest.raises(SchemaError) as exc:
 
-        class TypoSchema(ProteusFrame):
+        class TypoSchema(Schema):
             value: Col[int]
             amount: int  # Typo: missing Col wrapper
 
@@ -1181,7 +1110,7 @@ def test_optional_non_col_raises_schema_error():
     """Optional[float] without Col should also raise SchemaError."""
     with pytest.raises(SchemaError) as exc:
 
-        class BadOptionalSchema(ProteusFrame):
+        class BadOptionalSchema(Schema):
             count: Optional[int]  # Missing Col wrapper
 
     assert "count" in str(exc.value)
@@ -1190,14 +1119,14 @@ def test_optional_non_col_raises_schema_error():
 def test_boolean_coercion_raises_on_unknown_strings():
     """Boolean coercion should raise error for unrecognized strings when errors='raise'."""
 
-    class BoolSchema(ProteusFrame):
+    class BoolSchema(Schema):
         flag: Col[bool]
 
     df = pd.DataFrame({"flag": ["true", "maybe", "false"]})
 
-    # Test with pf_coerce which actually performs type coercion
+    # Test with coerce which actually performs type coercion
     with pytest.raises((ValueError, TypeError)) as exc:
-        BoolSchema.pf_coerce(df, errors="raise")
+        BoolSchema(df, coerce=True, coerce_errors="raise")
 
     assert "maybe" in str(exc.value)
 
@@ -1205,7 +1134,7 @@ def test_boolean_coercion_raises_on_unknown_strings():
 def test_boolean_coercion_accepts_valid_strings():
     """Boolean coercion should accept standard true/false strings."""
 
-    class BoolSchema(ProteusFrame):
+    class BoolSchema(Schema):
         flag: Col[bool]
 
     # Test various valid representations
@@ -1213,23 +1142,23 @@ def test_boolean_coercion_accepts_valid_strings():
         {"flag": ["true", "false", "1", "0", "yes", "no", "on", "off", "TRUE", "FALSE"]}
     )
 
-    obj = BoolSchema.pf_coerce(df, errors="raise")
+    obj = BoolSchema(df, coerce=True, coerce_errors="raise")
     assert len(obj) == 10
     # First value should be True
-    assert obj.flag[0] is True or obj.flag[0] == True
+    assert obj.flag[0] is True or obj.flag[0]
     # Second value should be False
-    assert obj.flag[1] is False or obj.flag[1] == False
+    assert obj.flag[1] is False or not obj.flag[1]
 
 
 def test_boolean_coercion_handles_na_values():
     """Boolean coercion should preserve NA/None values."""
 
-    class BoolSchema(ProteusFrame):
+    class BoolSchema(Schema):
         flag: Col[bool]
 
     df = pd.DataFrame({"flag": ["true", None, "false", pd.NA]})
 
-    obj = BoolSchema.pf_coerce(df, errors="raise")
+    obj = BoolSchema(df, coerce=True, coerce_errors="raise")
     assert len(obj) == 4
     # Check that NA values are preserved
     assert pd.isna(obj.flag[1])
@@ -1239,28 +1168,30 @@ def test_boolean_coercion_handles_na_values():
 def test_boolean_coercion_with_errors_coerce():
     """Boolean coercion with errors='coerce' should set unknown values to NA."""
 
-    class BoolSchema(ProteusFrame):
+    class BoolSchema(Schema):
         flag: Col[bool]
 
     df = pd.DataFrame({"flag": ["true", "maybe", "false", "unknown"]})
 
     # With errors='coerce', unknown values should become NA
-    obj = BoolSchema.pf_coerce(df, errors="coerce")
+    obj = BoolSchema(df, coerce=True, coerce_errors="coerce")
     assert len(obj) == 4
-    assert obj.flag[0] is True or obj.flag[0] == True
+    assert obj.flag[0] is True or obj.flag[0]
     assert pd.isna(obj.flag[1])  # "maybe" -> NA
-    assert obj.flag[2] is False or obj.flag[2] == False
+    assert obj.flag[2] is False or not obj.flag[2]
     assert pd.isna(obj.flag[3])  # "unknown" -> NA
 
 
 def test_contains_checks_python_attribute_names():
     """__contains__ should check Python attribute names, not just raw column names."""
 
-    class AliasSchema(ProteusFrame):
+    class AliasSchema(Schema):
         tier: Col[str] = Field(alias="customer_tier")
         status: Col[str]
 
-    df = pd.DataFrame({"customer_tier": ["Free", "Pro"], "status": ["active", "inactive"]})
+    df = pd.DataFrame(
+        {"customer_tier": ["Free", "Pro"], "status": ["active", "inactive"]}
+    )
 
     obj = AliasSchema(df, validate=False)
 
@@ -1300,4 +1231,14 @@ def test_contains_works_without_aliases():
     assert "lifetime_value" in obj
 
     # Raw column name for alias should also work
+    assert "SUBSCRIPTION_TIER" in obj
+    # Raw column name for alias should also work
+    assert "SUBSCRIPTION_TIER" in obj
+    # Raw column name for alias should also work
+    assert "SUBSCRIPTION_TIER" in obj
+    assert "SUBSCRIPTION_TIER" in obj
+    assert "SUBSCRIPTION_TIER" in obj
+    assert "SUBSCRIPTION_TIER" in obj
+    assert "SUBSCRIPTION_TIER" in obj
+    assert "SUBSCRIPTION_TIER" in obj
     assert "SUBSCRIPTION_TIER" in obj

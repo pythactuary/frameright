@@ -1,7 +1,7 @@
 """
-ProteusFrame Polars Eager Demo
+FrameRight Polars Eager Demo
 
-Demonstrates ProteusFrame's backend support for Polars Eager (pl.Series):
+Demonstrates FrameRight's backend support for Polars Eager (pl.Series):
 - Uses Col for static typing and IDE autocomplete
 - All columns are pl.Series, supporting eager polars methods
 """
@@ -10,12 +10,11 @@ from typing import Optional
 
 import polars as pl
 
-from proteusframe import Field
-from proteusframe import ProteusFramePolars as ProteusFrame
-from proteusframe.typing.polars_eager import Col
+from frameright import Field
+from frameright.polars.eager import Col, Schema
 
 
-class SalesEager(ProteusFrame):
+class Sales(Schema):
     """Sales data schema for Polars Eager (pl.Series)."""
 
     customer: Col[str]
@@ -31,8 +30,8 @@ df = pl.DataFrame(
     }
 )
 
-sales = SalesEager(df)
-print(f"✓ Backend: {sales.pf_backend.name}")
+sales = Sales(df)
+print(f"✓ Backend: {sales.fr_backend.name}")
 print(f"✓ Column type: {type(sales.revenue)}")
 print(f"✓ Is pl.Series?: {isinstance(sales.revenue, pl.Series)}")
 
@@ -44,7 +43,4 @@ print(f"✓ Mean revenue (polars .mean()): {sales.revenue.mean():.2f}")
 
 # Assign profit as a Col[float] (pl.Series) for type checkers
 sales.profit = sales.revenue * 0.3
-if sales.profit is not None:
-    print(f"✓ Computed profit (pl.Series): {sales.profit.to_list()}")
-    print(f"✓ Computed profit (pl.Series): {sales.profit.to_list()}")
-    print(f"✓ Computed profit (pl.Series): {sales.profit.to_list()}")
+print(f"✓ Computed profit (pl.Series): {sales.profit.to_list()}")

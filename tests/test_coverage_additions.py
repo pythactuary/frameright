@@ -10,24 +10,19 @@ try:
 except ImportError:
     HAS_POLARS = False
 
-from proteusframe import (
-    Field,
-    ProteusFrame,
-    ProteusFramePandas,
-    ProteusFramePolars,
-    ProteusFramePolarsLazy,
-)
-from proteusframe.exceptions import (
+from frameright import Field
+from frameright.exceptions import (
     ConstraintViolationError,
     MissingColumnError,
     TypeMismatchError,
     ValidationError,
 )
-from proteusframe.typing import Col
+from frameright.pandas import Schema as StructFramePandas
+from frameright.typing import Col
 
 
 # Pandas Schema Classes
-class SimpleSchema(ProteusFramePandas):
+class SimpleSchema(StructFramePandas):
     """Simple schema for coverage tests."""
 
     id: Col[int]
@@ -35,7 +30,7 @@ class SimpleSchema(ProteusFramePandas):
     value: Col[float]
 
 
-class ConstrainedSchema(ProteusFramePandas):
+class ConstrainedSchema(StructFramePandas):
     """Schema with various constraints for testing validation."""
 
     id: Col[int] = Field(unique=True, ge=1)
@@ -46,15 +41,17 @@ class ConstrainedSchema(ProteusFramePandas):
 
 # Polars Schema Classes (only defined if Polars is available)
 if HAS_POLARS:
+    from frameright.polars.eager import Schema as StructFramePolars
+    from frameright.polars.lazy import Schema as StructFramePolarsLazy
 
-    class SimpleSchemaPolars(ProteusFramePolars):
+    class SimpleSchemaPolars(StructFramePolars):
         """Simple schema for polars coverage tests."""
 
         id: Col[int]
         name: Col[str]
         value: Col[float]
 
-    class ConstrainedSchemaPolars(ProteusFramePolars):
+    class ConstrainedSchemaPolars(StructFramePolars):
         """Schema with various constraints for testing validation."""
 
         id: Col[int] = Field(unique=True, ge=1)
@@ -62,14 +59,14 @@ if HAS_POLARS:
         amount: Col[float] = Field(gt=0, lt=1000)
         category: Col[str] = Field(isin=["A", "B", "C"])
 
-    class SimpleSchemaPolarsLazy(ProteusFramePolarsLazy):
+    class SimpleSchemaPolarsLazy(StructFramePolarsLazy):
         """Simple schema for polars coverage tests."""
 
         id: Col[int]
         name: Col[str]
         value: Col[float]
 
-    class ConstrainedSchemaPolarsLazy(ProteusFramePolarsLazy):
+    class ConstrainedSchemaPolarsLazy(StructFramePolarsLazy):
         """Schema with various constraints for testing validation."""
 
         id: Col[int] = Field(unique=True, ge=1)
@@ -90,14 +87,14 @@ class TestPandasBackendCoverage:
         """Test to_dict with orient='list'."""
         df = pd.DataFrame({"id": [1, 2], "name": ["a", "b"], "value": [1.0, 2.0]})
         schema = SimpleSchema(df)
-        result = schema.pf_data.to_dict(orient="list")
+        result = schema.fr_data.to_dict(orient="list")
         assert result == {"id": [1, 2], "name": ["a", "b"], "value": [1.0, 2.0]}
 
     def test_to_dict_dict_orient(self):
         """Test to_dict with orient='dict'."""
         df = pd.DataFrame({"id": [1, 2], "name": ["a", "b"], "value": [1.0, 2.0]})
         schema = SimpleSchema(df)
-        result = schema.pf_data.to_dict(orient="dict")
+        result = schema.fr_data.to_dict(orient="dict")
         # pandas orient='dict' returns {col: {index: value}} format
         assert "id" in result
         assert "name" in result
@@ -109,7 +106,7 @@ class TestPandasBackendCoverage:
         """Test to_dict with orient='records' (default)."""
         df = pd.DataFrame({"id": [1, 2], "name": ["a", "b"], "value": [1.0, 2.0]})
         schema = SimpleSchema(df)
-        result = schema.pf_data.to_dict(orient="records")
+        result = schema.fr_data.to_dict(orient="records")
         assert len(result) == 2
         assert result[0] == {"id": 1, "name": "a", "value": 1.0}
 
@@ -120,7 +117,7 @@ class TestPandasBackendCoverage:
         df3 = pd.DataFrame({"id": [1, 3], "name": ["a", "c"], "value": [1.0, 3.0]})
 
         # Use backend equals method directly
-        from proteusframe.backends.pandas_backend import PandasBackend
+        from frameright.backends.pandas_backend import PandasBackend
 
         backend = PandasBackend()
         assert backend.equals(df1, df2)
@@ -133,9 +130,9 @@ class TestPandasBackendCoverage:
         )
         schema = SimpleSchema(df)
         filtered = schema.__class__(
-            schema.pf_data[schema.value > 1.5], copy=False, validate=False
+            schema.fr_data[schema.value > 1.5], copy=False, validate=False
         )
-        assert len(filtered.pf_data) == 2
+        assert len(filtered.fr_data) == 2
         assert filtered.id.tolist() == [2, 3]
 
     def test_multiindex_operations(self):
@@ -145,7 +142,7 @@ class TestPandasBackendCoverage:
             [[1, 2], ["x", "y"]], names=["idx1", "idx2"]
         )
 
-        from proteusframe.backends.pandas_backend import PandasBackend
+        from frameright.backends.pandas_backend import PandasBackend
 
         backend = PandasBackend()
 
@@ -211,7 +208,7 @@ class TestPandasBackendCoverage:
 
     def test_empty_series_different_dtypes(self):
         """Test empty_series generation with different dtypes."""
-        from proteusframe.backends.pandas_backend import PandasBackend
+        from frameright.backends.pandas_backend import PandasBackend
 
         backend = PandasBackend()
 
@@ -251,12 +248,12 @@ class TestPolarsBackendCoverage:
 
         # LazyFrame should be detected
         schema = SimpleSchemaPolarsLazy(lazy_df)
-        assert len(schema.pf_data.collect()) == 3
+        assert len(schema.fr_data.collect()) == 3
 
         # Test has_column with LazyFrame
-        from proteusframe.backends.polars_backend import PolarsBackend
+        from frameright.backends.polars_lazy_backend import PolarsLazyBackend
 
-        backend = PolarsBackend()
+        backend = PolarsLazyBackend()
         assert backend.has_column(lazy_df, "id")
         assert not backend.has_column(lazy_df, "nonexistent")
 
@@ -272,20 +269,20 @@ class TestPolarsBackendCoverage:
         schema = SimpleSchemaPolars(df)
 
         # Polars uses to_dicts() for list of records
-        result_records = schema.pf_data.to_dicts()
+        result_records = schema.fr_data.to_dicts()
         assert len(result_records) == 2
         assert result_records[0] == {"id": 1, "name": "a", "value": 1.0}
 
         # Polars uses to_dict(as_series=False) for dict of lists
-        result_dict = schema.pf_data.to_dict(as_series=False)
+        result_dict = schema.fr_data.to_dict(as_series=False)
         assert result_dict == {"id": [1, 2], "name": ["a", "b"], "value": [1.0, 2.0]}
 
         # Same as dict for polars
-        result_list = schema.pf_data.to_dict(as_series=False)
+        result_list = schema.fr_data.to_dict(as_series=False)
         assert result_list == {"id": [1, 2], "name": ["a", "b"], "value": [1.0, 2.0]}
 
         # Test default behavior
-        result_default = schema.pf_data.to_dicts()
+        result_default = schema.fr_data.to_dicts()
         assert len(result_default) == 2
 
     def test_lazyframe_to_dict(self):
@@ -293,7 +290,7 @@ class TestPolarsBackendCoverage:
         df = pl.DataFrame({"id": [1, 2], "name": ["a", "b"], "value": [1.0, 2.0]})
         lazy_df = df.lazy()
         schema = SimpleSchemaPolarsLazy(lazy_df)
-        result = schema.pf_data.collect().to_dicts()
+        result = schema.fr_data.collect().to_dicts()
         assert len(result) == 2
 
     def test_lazyframe_backend_equals(self):
@@ -305,16 +302,16 @@ class TestPolarsBackendCoverage:
         lazy2 = df2.lazy()
 
         # Use backend equals method directly
-        from proteusframe.backends.polars_backend import PolarsBackend
+        from frameright.backends.polars_lazy_backend import PolarsLazyBackend
 
-        backend = PolarsBackend()
+        backend = PolarsLazyBackend()
         assert backend.equals(lazy1, lazy2)
 
     def test_empty_series_all_dtypes(self):
         """Test empty_series with all dtype mappings."""
-        from proteusframe.backends.polars_backend import PolarsBackend
+        from frameright.backends.polars_eager_backend import PolarsEagerBackend
 
-        backend = PolarsBackend()
+        backend = PolarsEagerBackend()
 
         int_series = backend.empty_series("int64")
         assert len(int_series) == 0
@@ -343,9 +340,9 @@ class TestPolarsBackendCoverage:
             {"id": [1, 2, 3], "name": ["a", "b", "c"], "value": [1.0, 2.0, 3.0]}
         )
 
-        from proteusframe.backends.polars_backend import PolarsBackend
+        from frameright.backends.polars_eager_backend import PolarsEagerBackend
 
-        backend = PolarsBackend()
+        backend = PolarsEagerBackend()
 
         # get_index returns a row-number series
         index = backend.get_index(df)
@@ -431,9 +428,11 @@ class TestPolarsBackendCoverage:
 
         # Filter using boolean mask
         filtered = schema.__class__(
-            schema.pf_data.filter(schema.value > 2.0), copy=False, validate=False  # type: ignore[call-arg]
+            schema.fr_data.filter(schema.value > 2.0),
+            copy=False,
+            validate=False,  # type: ignore[call-arg]
         )
-        assert len(filtered.pf_data) == 2
+        assert len(filtered.fr_data) == 2
         assert filtered.id.to_list() == [3, 4]
 
     def test_to_csv_lazyframe(self):
@@ -447,7 +446,7 @@ class TestPolarsBackendCoverage:
 
         with tempfile.TemporaryDirectory() as tmpdir:
             path = os.path.join(tmpdir, "test.csv")
-            schema.pf_data.collect().write_csv(path)
+            schema.fr_data.collect().write_csv(path)
             assert os.path.exists(path)
 
 
@@ -461,21 +460,21 @@ class TestImportCoverage:
 
     def test_pandas_typing_imports(self):
         """Test pandas typing imports are accessible."""
-        from proteusframe.typing.pandas import Col, Index
+        from frameright.typing.pandas import Col, Index
 
         assert Col is not None
         assert Index is not None
 
     def test_polars_typing_imports(self):
         """Test polars typing imports are accessible."""
-        from proteusframe.typing.polars_eager import Col
+        from frameright.typing.polars_eager import Col
 
         assert Col is not None
         # Note: Polars doesn't have an Index concept, so we only import Col
 
     def test_generic_typing_imports(self):
         """Test generic typing imports."""
-        from proteusframe.typing import Col, Index
+        from frameright.typing import Col, Index
 
         # At runtime, Col and Index are generic classes
         assert Col is not None
@@ -494,78 +493,54 @@ class TestCoercionAndEdgeCases:
         """Test coercion with datetime types."""
         from datetime import datetime
 
-        class DateSchema(ProteusFrame):
+        class DateSchema(StructFramePandas):
             id: Col[int]
             created_at: Col[datetime]
 
         df = pd.DataFrame({"id": [1, 2], "created_at": ["2020-01-01", "2020-01-02"]})
-        schema = DateSchema.pf_coerce(df)
+        schema = DateSchema(df, coerce=True)
         assert schema.created_at.dtype.name.startswith("datetime")
 
     def test_coerce_bool_from_strings(self):
         """Test coercion of boolean from various string formats."""
 
-        class BoolSchema(ProteusFrame):
+        class BoolSchema(StructFramePandas):
             id: Col[int]
             flag: Col[bool]
 
         # Test with string booleans
         df = pd.DataFrame({"id": [1, 2, 3, 4], "flag": ["true", "false", "yes", "no"]})
-        schema = BoolSchema.pf_coerce(df)
+        schema = BoolSchema(df, coerce=True)
         assert schema.flag.dtype == "boolean" or schema.flag.dtype == bool
 
     @pytest.mark.skipif(not HAS_POLARS, reason="Polars not installed")
     def test_polars_coerce_bool_errors_ignore(self):
-        """Test Polars coercion with errors='ignore'."""
+        """Test Polars coercion with errors='ignore' mode for bool type."""
 
-        class BoolSchema(ProteusFrame):
+        class BoolSchema(StructFramePolars):
             id: Col[int]
             flag: Col[bool]
 
         df = pl.DataFrame({"id": [1, 2], "flag": ["true", "false"]})
         # This will attempt coercion and should handle it gracefully
         try:
-            _ = BoolSchema.pf_coerce(df)
+            _ = BoolSchema(df, coerce=True)
         except Exception:
             # Some coercions may fail, which is fine for coverage
             pass
-
-    def test_example_generation_with_dates(self):
-        """Test example data generation with date types."""
-        from datetime import date
-
-        class DateSchema(ProteusFrame):
-            id: Col[int]
-            birth_date: Col[date]
-
-        example = DateSchema.pf_example(nrows=3)
-        assert len(example.pf_data) == 3
-        assert "birth_date" in example.pf_data.columns
-
-    @pytest.mark.skipif(not HAS_POLARS, reason="Polars not installed")
-    def test_polars_example_with_datetime(self):
-        """Test Polars example generation with datetime."""
-        from datetime import datetime
-
-        class DTSchema(ProteusFrame):
-            id: Col[int]
-            timestamp: Col[datetime]
-
-        example = DTSchema.pf_example(nrows=2)
-        assert len(example.pf_data) == 2
 
     def test_validation_single_schema_error(self):
         """Test validation with single SchemaError (not SchemaErrors)."""
 
         # Create a schema with a constraint that will raise a single error
-        class StrictSchema(ProteusFrame):
+        class StrictSchema(StructFramePandas):
             id: Col[int] = Field(unique=True)
             value: Col[float]
 
         # This should pass
         df = pd.DataFrame({"id": [1, 2], "value": [1.0, 2.0]})
         schema = StrictSchema(df)
-        assert len(schema.pf_data) == 2
+        assert len(schema.fr_data) == 2
 
     @pytest.mark.skipif(not HAS_POLARS, reason="Polars not installed")
     def test_polars_has_column_lazyframe(self):
@@ -573,7 +548,7 @@ class TestCoercionAndEdgeCases:
         df = pl.DataFrame({"id": [1, 2], "name": ["a", "b"]})
         lazy = df.lazy()
 
-        from proteusframe.backends.narwhals_backend import NarwhalsBackend
+        from frameright.backends.narwhals_backend import NarwhalsBackend
 
         backend = NarwhalsBackend()
 
@@ -587,9 +562,9 @@ class TestCoercionAndEdgeCases:
         """Test Polars set_index with non-Series values."""
         df = pl.DataFrame({"id": [1, 2], "name": ["a", "b"]})
 
-        from proteusframe.backends.polars_backend import PolarsBackend
+        from frameright.backends.polars_eager_backend import PolarsEagerBackend
 
-        backend = PolarsBackend()
+        backend = PolarsEagerBackend()
 
         # Set index with list (not Series)
         df_indexed = backend.set_index(df, [10, 20])
@@ -600,7 +575,7 @@ class TestCoercionAndEdgeCases:
         """Test Polars get_index_level with missing column."""
         df = pl.DataFrame({"id": [1, 2], "name": ["a", "b"]})
 
-        from proteusframe.backends.narwhals_backend import NarwhalsBackend
+        from frameright.backends.narwhals_backend import NarwhalsBackend
 
         backend = NarwhalsBackend()
 
@@ -612,7 +587,7 @@ class TestCoercionAndEdgeCases:
         """Test pandas to_dict with index orient."""
         df = pd.DataFrame({"id": [1, 2], "name": ["a", "b"], "value": [1.0, 2.0]})
         schema = SimpleSchema(df)
-        result = schema.pf_data.to_dict(orient="index")
+        result = schema.fr_data.to_dict(orient="index")
         # index orient returns {index: {col: val}}
         assert 0 in result
         assert result[0]["id"] == 1
@@ -621,7 +596,7 @@ class TestCoercionAndEdgeCases:
         """Test pandas to_dict with series orient."""
         df = pd.DataFrame({"id": [1], "name": ["a"], "value": [1.0]})
         schema = SimpleSchema(df)
-        result = schema.pf_data.to_dict(orient="series")
+        result = schema.fr_data.to_dict(orient="series")
         # series orient returns {col: Series}
         assert "id" in result
         assert hasattr(result["id"], "tolist")
@@ -630,7 +605,7 @@ class TestCoercionAndEdgeCases:
     def test_polars_coerce_different_errors_modes(self):
         """Test Polars coercion with different error modes."""
 
-        class FloatSchema(ProteusFrame):
+        class FloatSchema(StructFramePolars):
             id: Col[int]
             value: Col[float]
 
@@ -641,8 +616,8 @@ class TestCoercionAndEdgeCases:
                 "value": ["1.5", "bad", "3.5"],  # "bad" will be coerced to null
             }
         )
-        schema = FloatSchema.pf_coerce(df, errors="coerce", backend="polars")
-        assert len(schema.pf_data) == 3
+        schema = FloatSchema(df, coerce=True, coerce_errors="coerce")
+        assert len(schema.fr_data) == 3
         # bad value should be None/null
         assert schema.value.null_count() == 1  # type: ignore[attr-defined]
 
@@ -650,7 +625,7 @@ class TestCoercionAndEdgeCases:
     def test_polars_coerce_non_bool_type(self):
         """Test Polars coercion for non-bool numeric types."""
 
-        class IntSchema(ProteusFrame):
+        class IntSchema(StructFramePolars):
             id: Col[int]
             count: Col[int]
 
@@ -660,41 +635,15 @@ class TestCoercionAndEdgeCases:
                 "count": [10.5, 20.7],  # floats to ints
             }
         )
-        schema = IntSchema.pf_coerce(df, backend="polars")
+        schema = IntSchema(df, coerce=True)
         assert schema.count.dtype == pl.Int64
-
-    @pytest.mark.skipif(not HAS_POLARS, reason="Polars not installed")
-    def test_polars_example_with_unknown_type(self):
-        """Test Polars example generation with unknown/complex type."""
-
-        class ComplexSchema(ProteusFrame):
-            id: Col[int]
-            name: Col[str]
-
-        example = ComplexSchema.pf_example(nrows=2)
-        assert len(example.pf_data) == 2
-
-    @pytest.mark.skipif(not HAS_POLARS, reason="Polars not installed")
-    def test_polars_example_with_date_type(self):
-        """Test Polars example with date type specifically."""
-        from datetime import date as date_type
-
-        class DateSchema(ProteusFrame):
-            id: Col[int]
-            dob: Col[date_type]
-
-        example = DateSchema.pf_example(nrows=3)
-        assert len(example.pf_data) == 3
-        # Check that dates are generated
-        first_val = example.dob.to_list()[0]
-        assert isinstance(first_val, date_type)
 
     def test_pandas_backend_set_and_has_column(self):
         """Test pandas backend set_column and has_column methods."""
-        from proteusframe.backends.registry import get_backend
+        from frameright.backends.pandas_backend import PandasBackend
 
         df = pd.DataFrame({"id": [1, 2], "name": ["a", "b"]})
-        backend = get_backend("pandas")
+        backend = PandasBackend()
 
         # Test has_column
         assert backend.has_column(df, "id") is True
@@ -705,48 +654,17 @@ class TestCoercionAndEdgeCases:
         assert "new_col" in df_new.columns
         assert df_new["new_col"].tolist() == [10, 20]
 
-    def test_pandas_example_unknown_type(self):
-        """Test pandas example generation with unknown type."""
-        from typing import Any
-
-        class UnknownSchema(ProteusFrame):
-            id: Col[int]
-            data: Col[Any]  # Unknown type
-
-        example = UnknownSchema.pf_example(nrows=2)
-        assert len(example.pf_data) == 2
-        # Unknown type should generate None values
-        assert example.data.tolist() == [None, None]
-
-    @pytest.mark.skipif(not HAS_POLARS, reason="Polars not installed")
-    def test_polars_example_unknown_and_date_types(self):
-        """Test Polars example with unknown type and date."""
-        from datetime import date
-        from typing import Any
-
-        class MixedSchema(ProteusFrame):
-            id: Col[int]
-            unknown: Col[Any]
-            dob: Col[date]
-
-        example = MixedSchema.pf_example(nrows=3)
-        assert len(example.pf_data) == 3
-        # Unknown type should generate None values
-        assert example.unknown.to_list() == [None, None, None]
-        # Date column should have actual dates
-        assert all(isinstance(d, date) for d in example.dob.to_list())
-
     def test_pandas_index_nlevels(self):
         """Test pandas index_nlevels method."""
 
-        class SimpleSchema(ProteusFrame):
+        class SimpleSchema(StructFramePandas):
             id: Col[int]
             name: Col[str]
 
         df = pd.DataFrame({"id": [1, 2], "name": ["a", "b"]})
         schema = SimpleSchema(df)
         # Access backend directly to test index_nlevels
-        backend = schema.pf_backend
+        backend = schema.fr_backend
         nlevels = backend.index_nlevels(df)
         assert nlevels == 1
 
@@ -754,15 +672,15 @@ class TestCoercionAndEdgeCases:
     def test_polars_num_rows_lazyframe(self):
         """Test num_rows with LazyFrame."""
 
-        class SimpleSchema(ProteusFrame):
+        class SimpleSchema(StructFramePolarsLazy):
             id: Col[int]
             name: Col[str]
 
         df = pl.DataFrame({"id": [1, 2, 3], "name": ["a", "b", "c"]}).lazy()
         # Create schema with lazy frame
-        schema = SimpleSchema(df, validate=False, backend="polars")
+        schema = SimpleSchema(df, validate=False)
         # Should collect and get height
-        backend = schema.pf_backend
+        backend = schema.fr_backend
         nrows = backend.num_rows(df)
         assert nrows == 3
 
@@ -770,17 +688,17 @@ class TestCoercionAndEdgeCases:
     def test_polars_filter_series_mask_lazyframe(self):
         """Test filtering LazyFrame with Series mask."""
 
-        class SimpleSchema(ProteusFrame):
+        class SimpleSchema(StructFramePolarsLazy):
             id: Col[int]
             value: Col[int]
 
         df = pl.DataFrame({"id": [1, 2, 3], "value": [10, 20, 30]}).lazy()
-        schema = SimpleSchema(df, validate=False, backend="polars")
+        schema = SimpleSchema(df, validate=False)
 
         # Create a Series mask
         mask = pl.Series([True, False, True])
         # Filter through backend
-        backend = schema.pf_backend
+        backend = schema.fr_backend
         filtered_df = backend.filter_rows(df, mask)
         collected = filtered_df.collect()
         assert len(collected) == 2
@@ -789,20 +707,20 @@ class TestCoercionAndEdgeCases:
     def test_polars_coerce_with_errors_raise(self):
         """Test Polars coercion with errors='raise' mode."""
 
-        class IntSchema(ProteusFrame):
+        class IntSchema(StructFramePolars):
             id: Col[int]
             value: Col[int]
 
         df = pl.DataFrame({"id": [1, 2], "value": ["not_an_int", "also_not"]})
 
         with pytest.raises(TypeError) as exc_info:
-            IntSchema.pf_coerce(df, errors="raise", backend="polars")
+            IntSchema(df, coerce=True, coerce_errors="raise")
         assert "Cannot coerce" in str(exc_info.value)
 
     def test_pandas_validation_single_error_missing_column(self):
         """Test pandas single validation error with missing column."""
 
-        class SimpleSchema(ProteusFrame):
+        class SimpleSchema(StructFramePandas):
             id: Col[int]
             required_col: Col[str]
 
@@ -823,7 +741,7 @@ class TestCoercionAndEdgeCases:
     def test_pandas_validation_single_error_dtype_mismatch(self):
         """Test pandas single validation error with dtype mismatch."""
 
-        class TypedSchema(ProteusFrame):
+        class TypedSchema(StructFramePandas):
             id: Col[int]
             value: Col[int]
 
