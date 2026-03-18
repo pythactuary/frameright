@@ -58,18 +58,14 @@ print(f"   Return type: {type(customer_totals).__name__}")
 
 # ✅ Combine with Series.name for zero string literals
 print("\n3️⃣  Type-safe column names (no string literals!):")
-by_customer = sales.fr_data.groupby(str(sales.customer.name))[
-    str(sales.revenue.name)
-].sum()
+by_customer = sales.fr_data.groupby(str(sales.customer.name))[str(sales.revenue.name)].sum()
 print(f"   By customer: {by_customer.to_dict()}")
 
 # ✅ Schema introspection returns plain dicts
 print("\n4️⃣  Schema introspection (list of dicts):")
 schema = Sales.fr_schema_info()
 for row in schema:
-    print(
-        f"   {row['attribute']:12s} type={row['type']:5s} {row.get('description', '')}"
-    )
+    print(f"   {row['attribute']:12s} type={row['type']:5s} {row.get('description', '')}")
 
 # ✅ Instance preserves docstring
 print(f"\n5️⃣  Instance docstring preserved: '{sales.__doc__}'")

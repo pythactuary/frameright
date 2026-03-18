@@ -25,9 +25,7 @@ def _load_backend(name: str) -> BackendAdapter:
 
     module_path = _BACKEND_REGISTRY.get(name)
     if module_path is None:
-        raise ValueError(
-            f"Unknown backend '{name}'. Available: {sorted(_BACKEND_REGISTRY)}"
-        )
+        raise ValueError(f"Unknown backend '{name}'. Available: {sorted(_BACKEND_REGISTRY)}")
 
     import importlib
 

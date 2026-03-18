@@ -125,22 +125,16 @@ class TestPandasBackendCoverage:
 
     def test_filter_rows(self):
         """Test filtering with native pandas methods."""
-        df = pd.DataFrame(
-            {"id": [1, 2, 3], "name": ["a", "b", "c"], "value": [1.0, 2.0, 3.0]}
-        )
+        df = pd.DataFrame({"id": [1, 2, 3], "name": ["a", "b", "c"], "value": [1.0, 2.0, 3.0]})
         schema = SimpleSchema(df)
-        filtered = schema.__class__(
-            schema.fr_data[schema.value > 1.5], copy=False, validate=False
-        )
+        filtered = schema.__class__(schema.fr_data[schema.value > 1.5], copy=False, validate=False)
         assert len(filtered.fr_data) == 2
         assert filtered.id.tolist() == [2, 3]
 
     def test_multiindex_operations(self):
         """Test MultiIndex operations via backend."""
         df = pd.DataFrame({"id": [1, 2], "name": ["a", "b"], "value": [1.0, 2.0]})
-        df.index = pd.MultiIndex.from_arrays(
-            [[1, 2], ["x", "y"]], names=["idx1", "idx2"]
-        )
+        df.index = pd.MultiIndex.from_arrays([[1, 2], ["x", "y"]], names=["idx1", "idx2"])
 
         from frameright.backends.pandas_backend import PandasBackend
 
@@ -241,9 +235,7 @@ class TestPolarsBackendCoverage:
 
     def test_lazyframe_operations(self):
         """Test operations with LazyFrame."""
-        df = pl.DataFrame(
-            {"id": [1, 2, 3], "name": ["a", "b", "c"], "value": [1.0, 2.0, 3.0]}
-        )
+        df = pl.DataFrame({"id": [1, 2, 3], "name": ["a", "b", "c"], "value": [1.0, 2.0, 3.0]})
         lazy_df = df.lazy()
 
         # LazyFrame should be detected
@@ -336,9 +328,7 @@ class TestPolarsBackendCoverage:
 
     def test_polars_index_operations(self):
         """Test Polars index operations (which use column fallback)."""
-        df = pl.DataFrame(
-            {"id": [1, 2, 3], "name": ["a", "b", "c"], "value": [1.0, 2.0, 3.0]}
-        )
+        df = pl.DataFrame({"id": [1, 2, 3], "name": ["a", "b", "c"], "value": [1.0, 2.0, 3.0]})
 
         from frameright.backends.polars_eager_backend import PolarsEagerBackend
 

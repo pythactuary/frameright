@@ -27,9 +27,7 @@ class UserData(Schema):
     username: Col[str] = Field(min_length=1)
     is_active: Col[bool]
     engagement_score: Col[float] = Field(ge=0.0, le=100.0)
-    tier: Col[str] = Field(
-        alias="SUBSCRIPTION_TIER", isin=["Free", "Pro", "Enterprise"]
-    )
+    tier: Col[str] = Field(alias="SUBSCRIPTION_TIER", isin=["Free", "Pro", "Enterprise"])
     lifetime_value: Optional[Col[float]] = Field(ge=0.0)
 
 
@@ -40,9 +38,7 @@ class UserDataLazy(SchemaLazy):
     username: ColLazy[str] = Field(min_length=1)
     is_active: ColLazy[bool]
     engagement_score: ColLazy[float] = Field(ge=0.0, le=100.0)
-    tier: ColLazy[str] = Field(
-        alias="SUBSCRIPTION_TIER", isin=["Free", "Pro", "Enterprise"]
-    )
+    tier: ColLazy[str] = Field(alias="SUBSCRIPTION_TIER", isin=["Free", "Pro", "Enterprise"])
     lifetime_value: Optional[ColLazy[float]] = Field(ge=0.0)
 
 
@@ -293,9 +289,7 @@ class TestPolarsCoreMethods:
     def test_filter_with_expr(self, valid_df):
         """Filtering works with pl.Expr from property getter."""
         users = UserData(valid_df)
-        active = users.__class__(
-            users.fr_data.filter(users.is_active), copy=False, validate=False
-        )
+        active = users.__class__(users.fr_data.filter(users.is_active), copy=False, validate=False)
         assert len(active) == 2
         assert isinstance(active, UserData)
 
@@ -373,10 +367,7 @@ class TestPolarsStrict:
         with pytest.raises(ValidationError) as exc_info:
             MinimalSchema(df, strict=True)
         # Should mention the extra column or strict mode
-        assert (
-            "extra" in str(exc_info.value).lower()
-            or "strict" in str(exc_info.value).lower()
-        )
+        assert "extra" in str(exc_info.value).lower() or "strict" in str(exc_info.value).lower()
 
     def test_strict_true_accepts_exact_columns(self):
         """strict=True accepts DataFrames with exactly the schema columns."""
@@ -496,9 +487,7 @@ class TestPolarsLazyFrame:
         """Filtering works on LazyFrame with expressions."""
         lf = valid_df.lazy()
         users = UserDataLazy(lf)
-        active = users.__class__(
-            users.fr_data.filter(users.is_active), copy=False, validate=False
-        )
+        active = users.__class__(users.fr_data.filter(users.is_active), copy=False, validate=False)
         assert isinstance(active.fr_data, pl.LazyFrame)
         # Collect to verify
         assert active.fr_data.collect().height == 2

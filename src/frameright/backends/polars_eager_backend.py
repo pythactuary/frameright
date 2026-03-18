@@ -120,9 +120,7 @@ class PolarsEagerBackend(BackendAdapter):
             return df[level_name]
         raise KeyError(f"No column '{level_name}' found (Polars has no MultiIndex)")
 
-    def set_index_level(
-        self, df: "pl.DataFrame", level_name: str, value: Any
-    ) -> "pl.DataFrame":
+    def set_index_level(self, df: "pl.DataFrame", level_name: str, value: Any) -> "pl.DataFrame":
         return self.set_column(df, level_name, value)  # type: ignore[return-value]
 
     def index_nlevels(self, df: "pl.DataFrame") -> int:
@@ -295,25 +293,19 @@ class PolarsEagerBackend(BackendAdapter):
                             raise ValidationError(
                                 f"Column '{col_name}' is not defined in the schema (strict mode)"
                             ) from exc
-                    raise ValidationError(
-                        "Extra columns not allowed in strict mode"
-                    ) from exc
+                    raise ValidationError("Extra columns not allowed in strict mode") from exc
 
             # Check for dtype mismatches
             for i, check in enumerate(checks):
                 if check and str(check).startswith("dtype("):
                     col = columns[i] if i < len(columns) else "?"
-                    raise TypeMismatchError(
-                        f"Column '{col}' dtype mismatch: {check}"
-                    ) from exc
+                    raise TypeMismatchError(f"Column '{col}' dtype mismatch: {check}") from exc
 
             # Everything else is a constraint violation
             if fc.height > 0:
                 col = columns[0] if columns else "?"
                 check = checks[0] if checks else "?"
-                raise ConstraintViolationError(
-                    f"Column '{col}' failed check: {check}"
-                ) from exc
+                raise ConstraintViolationError(f"Column '{col}' failed check: {check}") from exc
         else:
             # Fallback: treat as pandas-style failure_cases
             self._translate_single_pandera_error(Exception(str(exc)))
@@ -365,9 +357,7 @@ class PolarsEagerBackend(BackendAdapter):
                     df = df.with_columns(df[col].cast(target_dtype).alias(col))
             elif errors == "coerce":
                 # Polars uses strict=False for lenient casting
-                df = df.with_columns(
-                    df[col].cast(target_dtype, strict=False).alias(col)
-                )
+                df = df.with_columns(df[col].cast(target_dtype, strict=False).alias(col))
             else:
                 df = df.with_columns(df[col].cast(target_dtype).alias(col))
         except Exception as e:

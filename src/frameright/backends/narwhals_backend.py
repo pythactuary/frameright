@@ -80,9 +80,7 @@ class NarwhalsBackend(BackendAdapter):
             return df[level_name]
         raise KeyError(f"No column '{level_name}' found")
 
-    def set_index_level(
-        self, df: nw.DataFrame, level_name: str, value: Any
-    ) -> nw.DataFrame:
+    def set_index_level(self, df: nw.DataFrame, level_name: str, value: Any) -> nw.DataFrame:
         return self.set_column(df, level_name, value)
 
     def index_nlevels(self, df: nw.DataFrame) -> int:
@@ -148,9 +146,7 @@ class NarwhalsBackend(BackendAdapter):
     ) -> Any:
         """Build pandera schema based on the underlying native DataFrame."""
         native = df.to_native()
-        is_polars = (
-            hasattr(native, "__class__") and "polars" in native.__class__.__module__
-        )
+        is_polars = hasattr(native, "__class__") and "polars" in native.__class__.__module__
 
         if is_polars:
             import pandera.polars as pa
@@ -247,12 +243,8 @@ class NarwhalsBackend(BackendAdapter):
 
         missing_mask = fc["check"] == "column_in_dataframe"
         if missing_mask.any():
-            missing_cols = sorted(
-                fc.loc[missing_mask, "failure_case"].unique().tolist()
-            )
-            raise MissingColumnError(
-                f"Missing required columns: {missing_cols}"
-            ) from exc
+            missing_cols = sorted(fc.loc[missing_mask, "failure_case"].unique().tolist())
+            raise MissingColumnError(f"Missing required columns: {missing_cols}") from exc
 
         dtype_mask = fc["check"].str.startswith("dtype(", na=False)
         if dtype_mask.any():
@@ -265,9 +257,7 @@ class NarwhalsBackend(BackendAdapter):
             row = fc.iloc[0]
             col = row.get("column", "?")
             check = row.get("check", "?")
-            raise ConstraintViolationError(
-                f"Column '{col}' failed check: {check}"
-            ) from exc
+            raise ConstraintViolationError(f"Column '{col}' failed check: {check}") from exc
 
     def _translate_single_pandera_error(self, exc: Any) -> None:
         msg = str(exc)

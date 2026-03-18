@@ -27,9 +27,7 @@ class UserData(Schema):
     username: Col[str] = Field(min_length=1)
     is_active: Col[bool] = Field(nullable=False)
     engagement_score: Col[float] = Field(ge=0.0, le=100.0)
-    tier: Col[str] = Field(
-        alias="SUBSCRIPTION_TIER", isin=["Free", "Pro", "Enterprise"]
-    )
+    tier: Col[str] = Field(alias="SUBSCRIPTION_TIER", isin=["Free", "Pro", "Enterprise"])
     lifetime_value: Optional[Col[float]] = Field(ge=0.0)
 
 
@@ -464,9 +462,7 @@ class TestMultiIndex:
     @pytest.fixture()
     def multi_df(self):
         df = pd.DataFrame({"c": [1.0, 2.0, 3.0]})
-        df.index = pd.MultiIndex.from_arrays(
-            [[10, 20, 30], ["x", "y", "z"]], names=["a", "b"]
-        )
+        df.index = pd.MultiIndex.from_arrays([[10, 20, 30], ["x", "y", "z"]], names=["a", "b"])
         return df
 
     def test_multi_index_not_in_schema(self):
@@ -744,10 +740,7 @@ class TestEdgeCases:
         with pytest.raises(ValidationError) as exc_info:
             MinimalSchema(df, strict=True)
         # Should mention the extra column
-        assert (
-            "extra" in str(exc_info.value).lower()
-            or "strict" in str(exc_info.value).lower()
-        )
+        assert "extra" in str(exc_info.value).lower() or "strict" in str(exc_info.value).lower()
 
     def test_strict_true_accepts_exact_columns(self):
         """strict=True accepts DataFrames with exactly the schema columns."""
@@ -1189,9 +1182,7 @@ def test_contains_checks_python_attribute_names():
         tier: Col[str] = Field(alias="customer_tier")
         status: Col[str]
 
-    df = pd.DataFrame(
-        {"customer_tier": ["Free", "Pro"], "status": ["active", "inactive"]}
-    )
+    df = pd.DataFrame({"customer_tier": ["Free", "Pro"], "status": ["active", "inactive"]})
 
     obj = AliasSchema(df, validate=False)
 

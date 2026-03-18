@@ -289,10 +289,7 @@ class BaseSchema:
                 col = meta["df_col"]
                 inner_type = meta["inner_type"]
                 field_info = meta["field_info"]
-                if (
-                    not self._fr_backend.has_column(self._fr_df, col)
-                    or inner_type is None
-                ):
+                if not self._fr_backend.has_column(self._fr_df, col) or inner_type is None:
                     continue
                 self._fr_df = self._fr_backend.coerce_column(
                     self._fr_df,
@@ -395,9 +392,7 @@ class BaseSchema:
             # 3. Inject the safe Property wrapper
             def make_property(col_name: str, optional_flag: bool) -> property:
                 def getter(self: "BaseSchema") -> Any:
-                    if optional_flag and not self._fr_backend.has_column(
-                        self._fr_df, col_name
-                    ):
+                    if optional_flag and not self._fr_backend.has_column(self._fr_df, col_name):
                         return None
 
                     # For LazyFrames, use get_column_ref() to return expressions (pl.Expr)
@@ -408,17 +403,13 @@ class BaseSchema:
                         # Check if it's a LazyFrame (polars backend)
                         df_type = type(self._fr_df).__name__
                         if df_type == "LazyFrame":
-                            return self._fr_backend.get_column_ref(
-                                self._fr_df, col_name
-                            )
+                            return self._fr_backend.get_column_ref(self._fr_df, col_name)
 
                     # Return native Series directly (pd.Series, pl.Series, or nw.Series)
                     return self._fr_backend.get_column(self._fr_df, col_name)
 
                 def setter(self: "BaseSchema", value: Any) -> None:
-                    self._fr_df = self._fr_backend.set_column(
-                        self._fr_df, col_name, value
-                    )
+                    self._fr_df = self._fr_backend.set_column(self._fr_df, col_name, value)
 
                 return property(getter, setter)
 
