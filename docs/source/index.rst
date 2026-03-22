@@ -1,5 +1,5 @@
-Schema Documentation
-=========================
+FrameRight Documentation
+========================
 
 Type-safe DataFrame wrapper with runtime validation for production data pipelines.
 
@@ -13,12 +13,12 @@ Type-safe DataFrame wrapper with runtime validation for production data pipeline
    examples
    api
 
-What is Schema?
---------------------
+What is FrameRight?
+-------------------
 
-Schema provides a Pydantic-like interface for Pandas and Polars DataFrames, enabling:
+FrameRight provides a Pydantic-like interface for Pandas and Polars DataFrames, enabling:
 
-* **Type-safe column access** with IDE autocomplete
+* **Type-aware column access** with IDE autocomplete
 * **Multi-backend support** — works seamlessly with Pandas and Polars
 * **Production-grade validation** — powered by Pandera for runtime schema checking
 * **Self-documenting** data structures with docstrings and type hints
@@ -62,9 +62,9 @@ Quick Example
 Key Benefits
 ------------
 
+* **IDE-first design**: Full autocomplete, hover docs, and static error checking
 * **Powered by Pandera**: Uses the industry-standard validation library for bulletproof runtime checks
 * **Backend-agnostic schemas**: Write once, use with Pandas or Polars
-* **IDE-first design**: Full autocomplete, hover docs, and static error checking
 * **Minimal performance overhead**: Adds only ~0.2 microseconds per column access and 48 bytes of memory
 
 Performance

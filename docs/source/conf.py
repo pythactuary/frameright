@@ -1,4 +1,4 @@
-"""Sphinx configuration for Schema documentation."""
+"""Sphinx configuration for FrameRight documentation."""
 
 import os
 import sys

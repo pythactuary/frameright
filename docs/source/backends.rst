@@ -1,7 +1,7 @@
 Backend Support
 ===============
 
-Schema supports multiple DataFrame backends. You can choose your backend using:
+FrameRight supports multiple DataFrame backends. You can choose your backend using:
 
 1. **Backend-specific classes** (recommended for type safety)
 2. **Base Schema class** (defaults to pandas, or specify ``backend`` parameter)
@@ -71,7 +71,7 @@ type guarantees and are recommended for production code.
 Typing Notes
 ------------
 
-Schema schemas are backend-agnostic, but you can opt into backend-specific typing for a better IDE experience:
+FrameRight schemas are backend-agnostic, but you can opt into backend-specific typing for a better IDE experience:
 
 * Pandas: ``from frameright.typing.pandas import Col`` (columns can type-check as ``pd.Series[T]`` with pandas stubs)
 * Polars eager: ``from frameright.typing.polars_eager import Col`` (columns type-check as ``pl.Series``)
@@ -80,7 +80,7 @@ Schema schemas are backend-agnostic, but you can opt into backend-specific typin
 .. note::
 
     Polars and Narwhals do not currently expose fully generic ``Series[T]`` / ``Expr[T]`` types upstream.
-    Schema's ``Col[T]`` is still valuable as a schema contract and for IDE autocomplete, but type checkers
+    FrameRight's ``Col[T]`` is still valuable as a schema contract and for IDE autocomplete, but type checkers
     generally treat the runtime values as unparameterized ``pl.Series`` / ``pl.Expr`` / ``nw.Series`` today.
 
 At runtime, the actual values you get depend on the backend:
@@ -93,7 +93,7 @@ Python 3.12+ Generic Syntax (PEP 695)
 ------------------------------------
 
 Python 3.12 adds a new generic class syntax that avoids manual ``TypeVar`` boilerplate.
-Schema works well with this style and still preserves backend inference:
+FrameRight works well with this style and still preserves backend inference:
 
 .. code-block:: python
 
@@ -121,7 +121,7 @@ Pandas Backend
 
 .. code-block:: bash
 
-    pip install Schema
+    pip install frameright
 
 Pandas comes as a default dependency.
 
@@ -154,7 +154,7 @@ Polars Backend
 
 .. code-block:: bash
 
-    pip install Schema[polars]
+    pip install frameright[polars]
 
 **Why Polars?**
 

@@ -7,15 +7,15 @@ Installation
 .. code-block:: bash
 
     # For Pandas backend (default)
-    pip install Schema
+    pip install frameright
 
     # For Polars backend (optional)
-    pip install Schema[polars]
+    pip install frameright[polars]
 
     # For Narwhals backend (optional)
-    pip install Schema[narwhals]
+    pip install frameright[narwhals]
 
-Schema supports multiple backends. Use backend-specific classes for type safety,
+FrameRight supports multiple backends. Use backend-specific classes for type safety,
 by importing from the appropriate backend module (``frameright.pandas``, ``frameright.polars.eager``, etc.).
 
 
@@ -131,7 +131,7 @@ Type-Safe Access
 Validation (Powered by Pandera)
 --------------------------------
 
-Schema uses **Pandera** for runtime validation, giving you production-tested constraint
+FrameRight uses **Pandera** for runtime validation, giving you production-tested constraint
 checking with helpful error messages.
 
 Validation runs automatically on construction:
