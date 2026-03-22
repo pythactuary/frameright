@@ -73,9 +73,9 @@ Typing Notes
 
 Schema schemas are backend-agnostic, but you can opt into backend-specific typing for a better IDE experience:
 
-* Pandas: ``from frameright.typing.pandas import Col, Index`` (columns can type-check as ``pd.Series[T]`` with pandas stubs)
-* Polars eager: ``from frameright.typing.polars_eager import Col, Index`` (columns type-check as ``pl.Series``)
-* Polars lazy: ``from frameright.typing.polars_lazy import Col, Index`` (columns type-check as ``pl.Expr`` for expression chaining)
+* Pandas: ``from frameright.typing.pandas import Col`` (columns can type-check as ``pd.Series[T]`` with pandas stubs)
+* Polars eager: ``from frameright.typing.polars_eager import Col`` (columns type-check as ``pl.Series``)
+* Polars lazy: ``from frameright.typing.polars_lazy import Col`` (columns type-check as ``pl.Expr`` for expression chaining)
 
 .. note::
 

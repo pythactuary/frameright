@@ -27,7 +27,9 @@ class UserData(Schema):
     username: Col[str] = Field(min_length=1)
     is_active: Col[bool]
     engagement_score: Col[float] = Field(ge=0.0, le=100.0)
-    tier: Col[str] = Field(alias="SUBSCRIPTION_TIER", isin=["Free", "Pro", "Enterprise"])
+    tier: Col[str] = Field(
+        alias="SUBSCRIPTION_TIER", isin=["Free", "Pro", "Enterprise"]
+    )
     lifetime_value: Optional[Col[float]] = Field(ge=0.0)
 
 
@@ -38,7 +40,9 @@ class UserDataLazy(SchemaLazy):
     username: ColLazy[str] = Field(min_length=1)
     is_active: ColLazy[bool]
     engagement_score: ColLazy[float] = Field(ge=0.0, le=100.0)
-    tier: ColLazy[str] = Field(alias="SUBSCRIPTION_TIER", isin=["Free", "Pro", "Enterprise"])
+    tier: ColLazy[str] = Field(
+        alias="SUBSCRIPTION_TIER", isin=["Free", "Pro", "Enterprise"]
+    )
     lifetime_value: Optional[ColLazy[float]] = Field(ge=0.0)
 
 
@@ -116,12 +120,11 @@ class TestPolarsInitialization:
         """Valid Polars data creates a valid object."""
         users = UserData(valid_df)
         assert len(users) == 3
-        assert users.fr_backend.name == "polars"
 
     def test_auto_detects_polars_backend(self, valid_df: pl.DataFrame):
         """Backend is auto-detected as 'polars'."""
         users = UserData(valid_df)
-        assert users.fr_backend.name == "polars"
+        assert users._fr_backend.name == "polars"
 
     def test_copy_flag_creates_independent_copy(self, valid_df: pl.DataFrame):
         """copy=True creates an independent copy."""
@@ -289,7 +292,9 @@ class TestPolarsCoreMethods:
     def test_filter_with_expr(self, valid_df):
         """Filtering works with pl.Expr from property getter."""
         users = UserData(valid_df)
-        active = users.__class__(users.fr_data.filter(users.is_active), copy=False, validate=False)
+        active = users.__class__(
+            users.fr_data.filter(users.is_active), copy=False, validate=False
+        )
         assert len(active) == 2
         assert isinstance(active, UserData)
 
@@ -367,7 +372,10 @@ class TestPolarsStrict:
         with pytest.raises(ValidationError) as exc_info:
             MinimalSchema(df, strict=True)
         # Should mention the extra column or strict mode
-        assert "extra" in str(exc_info.value).lower() or "strict" in str(exc_info.value).lower()
+        assert (
+            "extra" in str(exc_info.value).lower()
+            or "strict" in str(exc_info.value).lower()
+        )
 
     def test_strict_true_accepts_exact_columns(self):
         """strict=True accepts DataFrames with exactly the schema columns."""
@@ -391,20 +399,10 @@ class TestPolarsProtocols:
         assert "polars" in r
         assert "3 rows" in r
 
-    def test_iter(self, valid_df):
-        users = UserData(valid_df)
-        rows = list(users)
-        assert len(rows) == 3
-
     def test_eq(self, valid_df):
         a = UserData(valid_df, copy=True)
         b = UserData(valid_df, copy=True)
         assert a == b
-
-    def test_contains(self, valid_df):
-        users = UserData(valid_df)
-        assert "user_id" in users
-        assert "nonexistent" not in users
 
 
 # ===========================================================================
@@ -439,8 +437,8 @@ class TestCrossBackendConsistency:
         pl_obj = MinimalSchema(pl_df)
 
         assert len(pd_obj) == len(pl_obj) == 2
-        assert pd_obj.fr_backend.name == "pandas"
-        assert pl_obj.fr_backend.name == "polars"
+        assert pd_obj._fr_backend.name == "pandas"
+        assert pl_obj._fr_backend.name == "polars"
 
     def test_to_dict_consistent(self):
         """to_dict returns same structure for both backends."""
@@ -487,7 +485,9 @@ class TestPolarsLazyFrame:
         """Filtering works on LazyFrame with expressions."""
         lf = valid_df.lazy()
         users = UserDataLazy(lf)
-        active = users.__class__(users.fr_data.filter(users.is_active), copy=False, validate=False)
+        active = users.__class__(
+            users.fr_data.filter(users.is_active), copy=False, validate=False
+        )
         assert isinstance(active.fr_data, pl.LazyFrame)
         # Collect to verify
         assert active.fr_data.collect().height == 2
@@ -546,7 +546,7 @@ class TestPolarsLazyFrame:
         """head collects LazyFrame to return DataFrame."""
         lf = valid_df.lazy()
         users = UserDataLazy(lf)
-        h = users.fr_backend.head(users.fr_data, 2)
+        h = users._fr_backend.head(users.fr_data, 2)
         assert isinstance(h, pl.DataFrame)
         assert h.height == 2
 

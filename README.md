@@ -516,7 +516,7 @@ for col in OrderData.fr_schema_info():
 # ...
 ```
 
-Returns a list of dicts with keys: `attribute`, `column`, `type`, `required`, `nullable`, `unique`, `constraints`, `description`.
+Returns a list of dicts with keys: `attribute`, `column`, `type`, `required`, `nullable`, `unique`, `constraints`.
 
 ### The Escape Hatch
 

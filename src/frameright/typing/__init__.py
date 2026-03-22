@@ -1,4 +1,4 @@
-"""Generic column and index types for Schema.
+"""Generic column type for Schema.
 
 Col[T] is a generic type used for type annotations in Schema schemas.
 
@@ -34,10 +34,9 @@ T = TypeVar(
 )  # Type variable for column data types
 
 if TYPE_CHECKING:
-    # Type checkers see pandas Series/Index, preserving inner type T
+    # Type checkers see pandas Series, preserving inner type T
 
     Col: TypeAlias = pd.Series[T]
-    Index: TypeAlias = pd.Index[T]
 
 
 else:
@@ -47,10 +46,5 @@ else:
 
         pass
 
-    class Index(Generic[T]):
-        """Generic index type marker for Schema schemas."""
 
-        pass
-
-
-__all__ = ["Col", "Index"]
+__all__ = ["Col"]

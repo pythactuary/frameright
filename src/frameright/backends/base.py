@@ -79,44 +79,6 @@ class BackendAdapter(ABC):
         ...
 
     # ------------------------------------------------------------------
-    # Index operations
-    # ------------------------------------------------------------------
-
-    @abstractmethod
-    def get_index(self, df: Any) -> Any:
-        """Return the index of the DataFrame."""
-        ...
-
-    @abstractmethod
-    def set_index(self, df: Any, value: Any) -> Any:
-        """Set the index. Returns the (possibly new) DataFrame."""
-        ...
-
-    @abstractmethod
-    def get_index_level(self, df: Any, level_name: str) -> Any:
-        """Return a single level of a MultiIndex by name."""
-        ...
-
-    @abstractmethod
-    def set_index_level(self, df: Any, level_name: str, value: Any) -> Any:
-        """Replace one level of a MultiIndex. Returns the (possibly new) DataFrame."""
-        ...
-
-    @abstractmethod
-    def index_nlevels(self, df: Any) -> int:
-        """Return the number of index levels."""
-        ...
-
-    # ------------------------------------------------------------------
-    # Filtering
-    # ------------------------------------------------------------------
-
-    @abstractmethod
-    def filter_rows(self, df: Any, mask: Any) -> Any:
-        """Filter rows by a boolean mask. Returns a new DataFrame."""
-        ...
-
-    # ------------------------------------------------------------------
     # Iteration / conversion
     # ------------------------------------------------------------------
 
@@ -126,37 +88,8 @@ class BackendAdapter(ABC):
         ...
 
     @abstractmethod
-    def itertuples(self, df: Any, name: str) -> Any:
-        """Iterate over rows, yielding named tuples (or equivalent)."""
-        ...
-
-    @abstractmethod
     def equals(self, df1: Any, df2: Any) -> bool:
         """Check data equality between two DataFrames."""
-        ...
-
-    @abstractmethod
-    def to_dict(self, df: Any, orient: str = "records") -> Any:
-        """Convert the DataFrame to a dictionary."""
-        ...
-
-    @abstractmethod
-    def to_csv(self, df: Any, path: str, **kwargs: Any) -> None:
-        """Write the DataFrame to a CSV file."""
-        ...
-
-    # ------------------------------------------------------------------
-    # Construction helpers
-    # ------------------------------------------------------------------
-
-    @abstractmethod
-    def read_csv(self, path: str, **kwargs: Any) -> Any:
-        """Read a CSV file into a DataFrame."""
-        ...
-
-    @abstractmethod
-    def empty_series(self, dtype: str) -> Any:
-        """Create an empty Series with the given dtype string."""
         ...
 
     # ------------------------------------------------------------------

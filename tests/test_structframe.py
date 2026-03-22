@@ -13,7 +13,7 @@ from frameright.exceptions import (
     TypeMismatchError,
     ValidationError,
 )
-from frameright.pandas import Col, Index, Schema
+from frameright.pandas import Col, Schema
 
 # ---------------------------------------------------------------------------
 # Schema Definitions for Testing
@@ -27,7 +27,9 @@ class UserData(Schema):
     username: Col[str] = Field(min_length=1)
     is_active: Col[bool] = Field(nullable=False)
     engagement_score: Col[float] = Field(ge=0.0, le=100.0)
-    tier: Col[str] = Field(alias="SUBSCRIPTION_TIER", isin=["Free", "Pro", "Enterprise"])
+    tier: Col[str] = Field(
+        alias="SUBSCRIPTION_TIER", isin=["Free", "Pro", "Enterprise"]
+    )
     lifetime_value: Optional[Col[float]] = Field(ge=0.0)
 
 
@@ -368,12 +370,6 @@ class TestPythonProtocols:
         assert "UserData" in r
         assert "3 rows" in r
 
-    def test_iter(self, valid_df):
-        """__iter__ allows iterating over rows."""
-        users = UserData(valid_df)
-        rows = list(users)
-        assert len(rows) == 3
-
     def test_eq_same_data(self, valid_df):
         """__eq__ returns True for identical data."""
         a = UserData(valid_df, copy=True)
@@ -392,116 +388,10 @@ class TestPythonProtocols:
         users = UserData(valid_df)
         assert users.__eq__("not a frameright") is NotImplemented
 
-    def test_contains(self, valid_df):
-        """__contains__ supports 'col in obj' syntax."""
-        users = UserData(valid_df)
-        assert "username" in users
-        assert "nonexistent" not in users
-
 
 # ---------------------------------------------------------------------------
-# 11. Index[T] support
+# 11. Index[T] support — REMOVED
 # ---------------------------------------------------------------------------
-
-
-class IndexedSchema(Schema):
-    """Schema with an Index[T] annotation."""
-
-    row_id: Index[int]
-    name: Col[str]
-    value: Col[float]
-
-
-class TestIndexType:
-    """Tests for the Index[T] feature."""
-
-    @pytest.fixture()
-    def indexed_df(self):
-        df = pd.DataFrame({"name": ["Alice", "Bob", "Carol"], "value": [1.0, 2.0, 3.0]})
-        df.index = pd.Index([10, 20, 30], name="row_id")
-        return df
-
-    def test_index_getter(self, indexed_df):
-        """Index[T] attribute returns the DataFrame index."""
-        obj = IndexedSchema(indexed_df, validate=False)
-        pd.testing.assert_index_equal(obj.row_id, indexed_df.index)
-
-    def test_index_setter(self, indexed_df):
-        """Index[T] attribute can be set to update the DataFrame index."""
-        obj = IndexedSchema(indexed_df, validate=False)
-        new_idx = pd.Index([100, 200, 300])
-        obj.row_id = new_idx
-        pd.testing.assert_index_equal(obj.fr_data.index, new_idx)
-
-    def test_index_not_in_schema(self, indexed_df):
-        """Index[T] attribute should NOT appear in _fr_schema."""
-        assert "row_id" not in IndexedSchema._fr_schema
-
-    def test_index_does_not_interfere_with_validation(self, indexed_df):
-        """Validation should only check Col columns, not Index."""
-        obj = IndexedSchema(indexed_df, validate=True)
-        assert len(obj) == 3
-
-
-# ---------------------------------------------------------------------------
-# 12. MultiIndex support
-# ---------------------------------------------------------------------------
-
-
-class MultiIndexSchema(Schema):
-    """Schema with two Index[T] annotations for MultiIndex."""
-
-    a: Index[int]
-    b: Index[str]
-    c: Col[float]
-
-
-class TestMultiIndex:
-    """Tests for MultiIndex support via multiple Index[T] annotations."""
-
-    @pytest.fixture()
-    def multi_df(self):
-        df = pd.DataFrame({"c": [1.0, 2.0, 3.0]})
-        df.index = pd.MultiIndex.from_arrays([[10, 20, 30], ["x", "y", "z"]], names=["a", "b"])
-        return df
-
-    def test_multi_index_not_in_schema(self):
-        """Index attributes should not appear in _fr_schema."""
-        assert "a" not in MultiIndexSchema._fr_schema
-        assert "b" not in MultiIndexSchema._fr_schema
-        assert "c" in MultiIndexSchema._fr_schema
-
-    def test_multi_index_getter_level_a(self, multi_df):
-        """Getter for first index level returns correct values."""
-        obj = MultiIndexSchema(multi_df, validate=False)
-        expected = pd.Index([10, 20, 30], name="a")
-        pd.testing.assert_index_equal(obj.a, expected)
-
-    def test_multi_index_getter_level_b(self, multi_df):
-        """Getter for second index level returns correct values."""
-        obj = MultiIndexSchema(multi_df, validate=False)
-        expected = pd.Index(["x", "y", "z"], name="b")
-        pd.testing.assert_index_equal(obj.b, expected)
-
-    def test_multi_index_setter(self, multi_df):
-        """Setter replaces one level of the MultiIndex."""
-        obj = MultiIndexSchema(multi_df, validate=False)
-        obj.a = pd.Index([100, 200, 300])
-        result = obj.fr_data.index.get_level_values("a")
-        pd.testing.assert_index_equal(result, pd.Index([100, 200, 300], name="a"))
-        # Other level unchanged
-        result_b = obj.fr_data.index.get_level_values("b")
-        pd.testing.assert_index_equal(result_b, pd.Index(["x", "y", "z"], name="b"))
-
-    def test_multi_index_col_access(self, multi_df):
-        """Col columns still work alongside MultiIndex."""
-        obj = MultiIndexSchema(multi_df, validate=False)
-        pd.testing.assert_series_equal(obj.c, multi_df["c"])
-
-    def test_multi_index_validation_ignores_indexes(self, multi_df):
-        """Validation only checks Col columns, not Index annotations."""
-        obj = MultiIndexSchema(multi_df, validate=True)
-        assert len(obj) == 3
 
 
 # ===========================================================================
@@ -740,7 +630,10 @@ class TestEdgeCases:
         with pytest.raises(ValidationError) as exc_info:
             MinimalSchema(df, strict=True)
         # Should mention the extra column
-        assert "extra" in str(exc_info.value).lower() or "strict" in str(exc_info.value).lower()
+        assert (
+            "extra" in str(exc_info.value).lower()
+            or "strict" in str(exc_info.value).lower()
+        )
 
     def test_strict_true_accepts_exact_columns(self):
         """strict=True accepts DataFrames with exactly the schema columns."""
@@ -882,25 +775,6 @@ class TestRevalidation:
 
 
 # ===========================================================================
-# SECTION 27: __contains__ with Alias
-# ===========================================================================
-
-
-class TestContainsAlias:
-    def test_contains_uses_df_column_name(self, valid_df):
-        """__contains__ checks actual DataFrame column names."""
-        users = UserData(valid_df)
-        # The alias "SUBSCRIPTION_TIER" is the real column name
-        assert "SUBSCRIPTION_TIER" in users
-
-    def test_contains_also_checks_attr_name(self, valid_df):
-        """__contains__ also checks Python attribute names, even with aliases."""
-        users = UserData(valid_df)
-        # "tier" is the attribute name, and it should also work
-        assert "tier" in users
-
-
-# ===========================================================================
 # SECTION 28: __repr__ Detail Checks
 # ===========================================================================
 
@@ -952,13 +826,6 @@ class TestSchemaInfoFull:
         assert "nullable" in keys
         assert "unique" in keys
         assert "constraints" in keys
-        assert "description" in keys
-
-    def test_schema_info_description_values(self):
-        """fr_schema_info stores description correctly."""
-        info = DescribedSchema.fr_schema_info()
-        amt_row = next(r for r in info if r["attribute"] == "amount")
-        assert amt_row["description"] == "Transaction amount in USD"
 
     def test_schema_info_constraints_dict(self):
         """fr_schema_info stores constraints as a dict."""
@@ -1173,63 +1040,3 @@ def test_boolean_coercion_with_errors_coerce():
     assert pd.isna(obj.flag[1])  # "maybe" -> NA
     assert obj.flag[2] is False or not obj.flag[2]
     assert pd.isna(obj.flag[3])  # "unknown" -> NA
-
-
-def test_contains_checks_python_attribute_names():
-    """__contains__ should check Python attribute names, not just raw column names."""
-
-    class AliasSchema(Schema):
-        tier: Col[str] = Field(alias="customer_tier")
-        status: Col[str]
-
-    df = pd.DataFrame({"customer_tier": ["Free", "Pro"], "status": ["active", "inactive"]})
-
-    obj = AliasSchema(df, validate=False)
-
-    # Should find by Python attribute name
-    assert "tier" in obj
-    assert "status" in obj
-
-    # Should also find by raw DataFrame column name
-    assert "customer_tier" in obj
-
-    # Should not find non-existent columns
-    assert "subscription" not in obj
-
-
-def test_contains_works_without_aliases():
-    """__contains__ should work normally when no aliases are used."""
-
-    df = pd.DataFrame(
-        {
-            "user_id": [1, 2, 3],
-            "username": ["alice", "bob", "charlie"],
-            "is_active": [True, False, True],
-            "engagement_score": [85.5, 42.0, 91.2],
-            "SUBSCRIPTION_TIER": ["Free", "Pro", "Enterprise"],
-            "lifetime_value": [None, 199.99, None],
-        }
-    )
-
-    obj = UserData(df, validate=False)
-
-    # All Python attribute names should be checkable
-    assert "user_id" in obj
-    assert "username" in obj
-    assert "is_active" in obj
-    assert "engagement_score" in obj
-    assert "tier" in obj  # This has an alias
-    assert "lifetime_value" in obj
-
-    # Raw column name for alias should also work
-    assert "SUBSCRIPTION_TIER" in obj
-    # Raw column name for alias should also work
-    assert "SUBSCRIPTION_TIER" in obj
-    # Raw column name for alias should also work
-    assert "SUBSCRIPTION_TIER" in obj
-    assert "SUBSCRIPTION_TIER" in obj
-    assert "SUBSCRIPTION_TIER" in obj
-    assert "SUBSCRIPTION_TIER" in obj
-    assert "SUBSCRIPTION_TIER" in obj
-    assert "SUBSCRIPTION_TIER" in obj
-    assert "SUBSCRIPTION_TIER" in obj

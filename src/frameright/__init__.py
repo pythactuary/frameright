@@ -15,14 +15,13 @@ from .exceptions import (
     TypeMismatchError,
     ValidationError,
 )
-from .typing import Col, Index
+from .typing import Col
 
 __version__ = "0.3.0"
 __all__ = [
     "Field",
     "FieldInfo",
     "Col",
-    "Index",
     "StructFrameError",
     "SchemaError",
     "ValidationError",

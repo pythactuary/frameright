@@ -16,7 +16,7 @@ import pytest
 from frameright import Field
 from frameright.exceptions import ConstraintViolationError, MissingColumnError
 from frameright.pandas import Schema
-from frameright.typing import Col, Index
+from frameright.typing import Col
 
 # ---------------------------------------------------------------------------
 # Schemas defined with stringified annotations (PEP 563)
@@ -32,11 +32,6 @@ class FutureSchema(Schema):
 class FutureWithAlias(Schema):
     score: Col[float] = Field(alias="SCORE_COL", le=100)
     name: Col[str]
-
-
-class FutureWithIndex(Schema):
-    idx: Index[int]
-    value: Col[float]
 
 
 # Polars versions of the schemas (conditionally imported)
@@ -119,15 +114,6 @@ class TestFutureAnnotationsConstruction:
         assert len(obj) == 1
 
 
-class TestFutureAnnotationsIndex:
-    """Verify Index[T] works with stringified annotations."""
-
-    def test_construction_with_index(self):
-        df = pd.DataFrame({"value": [1.0, 2.0, 3.0]})
-        obj = FutureWithIndex(df)
-        assert len(obj) == 3
-
-
 class TestFutureAnnotationsPolars:
     """Verify PEP 563 works with Polars backend too."""
 
@@ -137,7 +123,7 @@ class TestFutureAnnotationsPolars:
         df = pl.DataFrame({"x": [1, 2], "y": ["a", "b"], "z": [1.0, 2.0]})
         obj = FutureSchemaPolars(df)
         assert len(obj) == 2
-        assert obj.fr_backend.name == "polars"
+        assert obj._fr_backend.name == "polars"
 
     def test_polars_lazyframe(self):
         import polars as pl

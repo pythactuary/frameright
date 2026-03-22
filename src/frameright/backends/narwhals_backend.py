@@ -20,7 +20,6 @@ Users would use this by wrapping their DataFrame:
 
 from __future__ import annotations
 
-from collections import namedtuple
 from datetime import date, datetime
 from typing import Any, Dict, List
 
@@ -68,73 +67,13 @@ class NarwhalsBackend(BackendAdapter):
     def num_cols(self, df: nw.DataFrame) -> int:
         return len(df.columns)
 
-    # Index operations (narwhals doesn't have indices)
-    def get_index(self, df: nw.DataFrame) -> List[int]:
-        return list(range(len(df)))
-
-    def set_index(self, df: nw.DataFrame, value: Any) -> nw.DataFrame:
-        return df  # No-op for narwhals
-
-    def get_index_level(self, df: nw.DataFrame, level_name: str) -> nw.Series:
-        if level_name in df.columns:
-            return df[level_name]
-        raise KeyError(f"No column '{level_name}' found")
-
-    def set_index_level(self, df: nw.DataFrame, level_name: str, value: Any) -> nw.DataFrame:
-        return self.set_column(df, level_name, value)
-
-    def index_nlevels(self, df: nw.DataFrame) -> int:
-        return 1
-
-    # Filtering
-    def filter_rows(self, df: nw.DataFrame, mask: nw.Series) -> nw.DataFrame:
-        return df.filter(mask)
-
     # Iteration / conversion
     def head(self, df: nw.DataFrame, n: int = 5) -> nw.DataFrame:
         return df.head(n)
 
-    def itertuples(self, df: nw.DataFrame, name: str) -> Any:
-        # Convert to native for iteration
-        native_df = df.to_native()
-        if hasattr(native_df, "itertuples"):  # Pandas
-            return native_df.itertuples(index=True, name=name)
-        else:  # Polars
-            RowClass = namedtuple(name, ["Index"] + list(df.columns))
-            for i, row in enumerate(native_df.iter_rows(named=True)):
-                yield RowClass(i, **row)
-
     def equals(self, df1: nw.DataFrame, df2: nw.DataFrame) -> bool:
         # Compare via native
         return df1.to_native().equals(df2.to_native())
-
-    def to_dict(self, df: nw.DataFrame, orient: str = "records") -> Any:
-        # Convert to dict via native
-        native = df.to_native()
-        if hasattr(native, "to_dict"):  # Pandas
-            return native.to_dict(orient=orient)
-        else:  # Polars
-            if orient == "records":
-                return native.to_dicts()
-            return {col: native[col].to_list() for col in native.columns}
-
-    def to_csv(self, df: nw.DataFrame, path: str, **kwargs: Any) -> None:
-        native = df.to_native()
-        if hasattr(native, "to_csv"):  # Pandas
-            native.to_csv(path, index=False, **kwargs)
-        else:  # Polars
-            native.write_csv(path, **kwargs)
-
-    # Construction helpers (return native for narwhals to wrap)
-    def read_csv(self, path: str, **kwargs: Any) -> Any:
-        import pandas as pd
-
-        return nw.from_native(pd.read_csv(path, **kwargs))
-
-    def empty_series(self, dtype: str) -> nw.Series:
-        import pandas as pd
-
-        return nw.from_native(pd.Series([], dtype=dtype), series_only=True)
 
     # Pandera validation (narwhals wraps native, so validate the native)
     def build_pandera_schema(
@@ -146,7 +85,9 @@ class NarwhalsBackend(BackendAdapter):
     ) -> Any:
         """Build pandera schema based on the underlying native DataFrame."""
         native = df.to_native()
-        is_polars = hasattr(native, "__class__") and "polars" in native.__class__.__module__
+        is_polars = (
+            hasattr(native, "__class__") and "polars" in native.__class__.__module__
+        )
 
         if is_polars:
             import pandera.polars as pa
@@ -243,8 +184,12 @@ class NarwhalsBackend(BackendAdapter):
 
         missing_mask = fc["check"] == "column_in_dataframe"
         if missing_mask.any():
-            missing_cols = sorted(fc.loc[missing_mask, "failure_case"].unique().tolist())
-            raise MissingColumnError(f"Missing required columns: {missing_cols}") from exc
+            missing_cols = sorted(
+                fc.loc[missing_mask, "failure_case"].unique().tolist()
+            )
+            raise MissingColumnError(
+                f"Missing required columns: {missing_cols}"
+            ) from exc
 
         dtype_mask = fc["check"].str.startswith("dtype(", na=False)
         if dtype_mask.any():
@@ -257,7 +202,9 @@ class NarwhalsBackend(BackendAdapter):
             row = fc.iloc[0]
             col = row.get("column", "?")
             check = row.get("check", "?")
-            raise ConstraintViolationError(f"Column '{col}' failed check: {check}") from exc
+            raise ConstraintViolationError(
+                f"Column '{col}' failed check: {check}"
+            ) from exc
 
     def _translate_single_pandera_error(self, exc: Any) -> None:
         msg = str(exc)

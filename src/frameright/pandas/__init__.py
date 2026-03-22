@@ -21,11 +21,9 @@ import pandas as pd
 from frameright.backends.pandas_backend import PandasBackend
 from frameright.core import BaseSchema, Field
 from frameright.typing import Col as _RuntimeCol
-from frameright.typing import Index as _RuntimeIndex
 
 # Re-export for convenience
 Col = _RuntimeCol  # type: ignore[misc]
-Index = _RuntimeIndex  # type: ignore[misc]
 
 # ------------------------------------------------------------------
 # Concrete Backend-Specific Schema
@@ -94,4 +92,4 @@ class Schema(BaseSchema):
             ...
 
 
-__all__ = ["Schema", "Field", "Col", "Index"]
+__all__ = ["Schema", "Field", "Col"]

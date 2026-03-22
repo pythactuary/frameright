@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from collections import namedtuple
 from datetime import date, datetime
 from typing import Any, Dict, List, Optional, Type
 
@@ -104,49 +103,6 @@ class PolarsLazyBackend(BackendAdapter):
         return df.collect_schema().len()
 
     # ------------------------------------------------------------------
-    # Index operations (Polars has no native index concept)
-    # ------------------------------------------------------------------
-
-    def get_index(self, df: "pl.LazyFrame") -> Any:
-        # Return an expression for row numbers
-        return pl.int_range(0, pl.count()).alias("index")
-
-    def set_index(self, df: "pl.LazyFrame", value: Any) -> "pl.LazyFrame":
-        # No-op for Polars (no index concept). Stored as a column instead.
-        if isinstance(value, pl.Series):
-            s = pl.lit(value).alias("_index")
-        elif isinstance(value, pl.Expr):
-            s = value.alias("_index")
-        else:
-            s = pl.lit(value).alias("_index")
-        return df.with_columns(s)
-
-    def get_index_level(self, df: "pl.LazyFrame", level_name: str) -> Any:
-        # Multi-index not natively supported; return expression
-        if level_name in df.columns:
-            return pl.col(level_name)
-        raise KeyError(f"No column '{level_name}' found (Polars has no MultiIndex)")
-
-    def set_index_level(self, df: "pl.LazyFrame", level_name: str, value: Any) -> "pl.LazyFrame":
-        return self.set_column(df, level_name, value)  # type: ignore[return-value]
-
-    def index_nlevels(self, df: "pl.LazyFrame") -> int:
-        # Polars doesn't support multi-level indices
-        return 1
-
-    # ------------------------------------------------------------------
-    # Filtering
-    # ------------------------------------------------------------------
-
-    def filter_rows(self, df: "pl.LazyFrame", mask: Any) -> "pl.LazyFrame":
-        if isinstance(mask, pl.Expr):
-            return df.filter(mask)
-        if isinstance(mask, pl.Series):
-            # Convert Series mask to expression for LazyFrame
-            return df.filter(pl.lit(mask))
-        return df.filter(mask)
-
-    # ------------------------------------------------------------------
     # Iteration / conversion
     # ------------------------------------------------------------------
 
@@ -154,48 +110,10 @@ class PolarsLazyBackend(BackendAdapter):
         # Always returns materialized DataFrame (collects LazyFrame)
         return df.head(n).collect()
 
-    def itertuples(self, df: "pl.LazyFrame", name: str) -> Any:
-        """Iterate over rows, yielding named tuples."""
-        materialized = df.collect()
-        RowClass = namedtuple(name, ["Index"] + materialized.columns)  # type: ignore[misc]
-        for i, row in enumerate(materialized.iter_rows(named=True)):
-            yield RowClass(i, **row)  # type: ignore[call-arg]
-
     def equals(self, df1: "pl.LazyFrame", df2: "pl.LazyFrame") -> bool:
         d1 = df1.collect()
         d2 = df2.collect()
         return d1.equals(d2)
-
-    def to_dict(self, df: "pl.LazyFrame", orient: str = "records") -> Any:
-        materialized = df.collect()
-        if orient == "records":
-            return materialized.to_dicts()
-        elif orient == "dict" or orient == "list":
-            return {col: materialized[col].to_list() for col in materialized.columns}
-        else:
-            return materialized.to_dicts()
-
-    def to_csv(self, df: "pl.LazyFrame", path: str, **kwargs: Any) -> None:
-        materialized = df.collect()
-        materialized.write_csv(path, **kwargs)
-
-    # ------------------------------------------------------------------
-    # Construction helpers
-    # ------------------------------------------------------------------
-
-    def read_csv(self, path: str, **kwargs: Any) -> "pl.LazyFrame":
-        return pl.scan_csv(path, **kwargs)  # type: ignore[no-any-return]
-
-    def empty_series(self, dtype: str) -> "pl.Series":
-        # Map string dtypes to polars dtypes
-        dtype_map = {
-            "int64": pl.Int64,
-            "float64": pl.Float64,
-            "str": pl.Utf8,
-            "bool": pl.Boolean,
-        }
-        pl_dtype = dtype_map.get(dtype.lower(), pl.Utf8)
-        return pl.Series("", [], dtype=pl_dtype)
 
     # ------------------------------------------------------------------
     # Pandera validation
@@ -310,19 +228,25 @@ class PolarsLazyBackend(BackendAdapter):
                             raise ValidationError(
                                 f"Column '{col_name}' is not defined in the schema (strict mode)"
                             ) from exc
-                    raise ValidationError("Extra columns not allowed in strict mode") from exc
+                    raise ValidationError(
+                        "Extra columns not allowed in strict mode"
+                    ) from exc
 
             # Check for dtype mismatches
             for i, check in enumerate(checks):
                 if check and str(check).startswith("dtype("):
                     col = columns[i] if i < len(columns) else "?"
-                    raise TypeMismatchError(f"Column '{col}' dtype mismatch: {check}") from exc
+                    raise TypeMismatchError(
+                        f"Column '{col}' dtype mismatch: {check}"
+                    ) from exc
 
             # Everything else is a constraint violation
             if fc.height > 0:
                 col = columns[0] if columns else "?"
                 check = checks[0] if checks else "?"
-                raise ConstraintViolationError(f"Column '{col}' failed check: {check}") from exc
+                raise ConstraintViolationError(
+                    f"Column '{col}' failed check: {check}"
+                ) from exc
         else:
             # Fallback: treat as pandas-style failure_cases
             self._translate_single_pandera_error(Exception(str(exc)))
@@ -370,7 +294,9 @@ class PolarsLazyBackend(BackendAdapter):
                 df = df.with_columns(bool_col)
             elif errors == "coerce":
                 # Polars uses strict=False for lenient casting
-                df = df.with_columns(pl.col(col).cast(target_dtype, strict=False).alias(col))
+                df = df.with_columns(
+                    pl.col(col).cast(target_dtype, strict=False).alias(col)
+                )
             else:
                 df = df.with_columns(pl.col(col).cast(target_dtype).alias(col))
         except Exception as e:

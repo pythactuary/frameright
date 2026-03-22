@@ -72,68 +72,14 @@ class PandasBackend(BackendAdapter):
         return len(df.columns)
 
     # ------------------------------------------------------------------
-    # Index operations
-    # ------------------------------------------------------------------
-
-    def get_index(self, df: pd.DataFrame) -> pd.Index:
-        return df.index
-
-    def set_index(self, df: pd.DataFrame, value: Any) -> pd.DataFrame:
-        df.index = value
-        return df
-
-    def get_index_level(self, df: pd.DataFrame, level_name: str) -> pd.Index:
-        return df.index.get_level_values(level_name)
-
-    def set_index_level(
-        self, df: pd.DataFrame, level_name: str, value: Any
-    ) -> pd.DataFrame:
-        idx = df.index
-        arrays = [
-            value if idx.names[i] == level_name else idx.get_level_values(i)
-            for i in range(idx.nlevels)
-        ]
-        df.index = pd.MultiIndex.from_arrays(arrays, names=idx.names)
-        return df
-
-    def index_nlevels(self, df: pd.DataFrame) -> int:
-        return df.index.nlevels
-
-    # ------------------------------------------------------------------
-    # Filtering
-    # ------------------------------------------------------------------
-
-    def filter_rows(self, df: pd.DataFrame, mask: Any) -> pd.DataFrame:
-        return df[mask]  # type: ignore[no-any-return]
-
-    # ------------------------------------------------------------------
     # Iteration / conversion
     # ------------------------------------------------------------------
 
     def head(self, df: pd.DataFrame, n: int = 5) -> pd.DataFrame:
         return df.head(n)
 
-    def itertuples(self, df: pd.DataFrame, name: str) -> Any:
-        return df.itertuples(index=True, name=name)
-
     def equals(self, df1: pd.DataFrame, df2: pd.DataFrame) -> bool:
         return df1.equals(df2)
-
-    def to_dict(self, df: pd.DataFrame, orient: str = "records") -> Any:
-        return df.to_dict(orient=orient)  # type: ignore[call-overload]
-
-    def to_csv(self, df: pd.DataFrame, path: str, **kwargs: Any) -> None:
-        df.to_csv(path, index=False, **kwargs)
-
-    # ------------------------------------------------------------------
-    # Construction helpers
-    # ------------------------------------------------------------------
-
-    def read_csv(self, path: str, **kwargs: Any) -> pd.DataFrame:
-        return pd.read_csv(path, **kwargs)  # type: ignore[no-any-return]
-
-    def empty_series(self, dtype: str) -> pd.Series:
-        return pd.Series([], dtype=dtype)
 
     # ------------------------------------------------------------------
     # Pandera validation

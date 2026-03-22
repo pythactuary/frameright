@@ -28,9 +28,9 @@ Define your DataFrame schema as a Python class using ``Col[T]`` type hints:
 
     For the best editor experience, import backend-specific typing shims:
 
-    * Pandas: ``from frameright.typing.pandas import Col, Index``
-    * Polars eager: ``from frameright.typing.polars_eager import Col, Index``
-    * Polars lazy: ``from frameright.typing.polars_lazy import Col, Index``
+    * Pandas: ``from frameright.typing.pandas import Col``
+    * Polars eager: ``from frameright.typing.polars_eager import Col``
+    * Polars lazy: ``from frameright.typing.polars_lazy import Col``
 
     The generic ``from frameright.typing import Col`` also works and preserves the
     inner type parameter ``T`` for schema annotations.

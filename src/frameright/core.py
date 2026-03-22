@@ -1,5 +1,3 @@
-import ast
-import inspect
 import sys
 from typing import (
     TYPE_CHECKING,
@@ -7,7 +5,6 @@ from typing import (
     Dict,
     List,
     Optional,
-    Type,
     TypeVar,
     Union,
     get_args,
@@ -29,61 +26,9 @@ if TYPE_CHECKING:
 
 from .backends.base import BackendAdapter
 from .exceptions import SchemaError
-from .typing import Col, Index
+from .typing import Col
 
 TStructFrame = TypeVar("TStructFrame", bound="BaseSchema")
-
-
-def _extract_docstrings(cls: Type[Any]) -> Dict[str, str]:
-    """Extract field docstrings from class source code using AST parsing.
-
-    Parses the class source to find string literals that immediately follow
-    annotated assignments, which Python treats as field docstrings.
-
-    Args:
-        cls: The class to extract docstrings from.
-
-    Returns:
-        A dictionary mapping attribute names to their docstrings.
-    """
-    try:
-        import textwrap
-
-        source = inspect.getsource(cls)
-        # Dedent to handle classes defined inside functions/methods
-        source = textwrap.dedent(source)
-        tree = ast.parse(source)
-        # Find the ClassDef node (should be the first statement)
-        classdef = None
-        for node in ast.walk(tree):
-            if isinstance(node, ast.ClassDef):
-                classdef = node
-                break
-
-        if classdef is None:
-            return {}
-
-        docstrings = {}
-        for i, node in enumerate(classdef.body):
-            # Look for annotated assignments (e.g., x: int = Field())
-            if isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name):
-                attr_name = node.target.id
-                # Check if next node is a string expression (docstring)
-                if i + 1 < len(classdef.body):
-                    next_node = classdef.body[i + 1]
-                    if isinstance(next_node, ast.Expr):
-                        # Python 3.8+ uses ast.Constant for string literals
-                        if isinstance(next_node.value, ast.Constant) and isinstance(
-                            next_node.value.value, str
-                        ):
-                            docstrings[attr_name] = str(next_node.value.value)
-                        # Legacy Python (ast.Str)
-                        elif isinstance(next_node.value, ast.Str):
-                            docstrings[attr_name] = next_node.value.s
-        return docstrings
-    except (OSError, TypeError, IndentationError, SyntaxError):
-        # Can't get source (e.g., in REPL, dynamically created class, or parse error)
-        return {}
 
 
 class FieldInfo:
@@ -245,7 +190,6 @@ class BaseSchema:
 
     # Stores the parsed schema for the specific child class
     _fr_schema: Dict[str, Dict[str, Any]]
-    _fr_index_attrs: List[Dict[str, Any]]
     _fr_backend: BackendAdapter  # Set by concrete subclasses (must be non-None)
 
     def __init__(
@@ -309,29 +253,17 @@ class BaseSchema:
         """Metaclass hook to parse the schema and inject properties at load time."""
         super().__init_subclass__(**kwargs)
         cls._fr_schema = {}
-        cls._fr_index_attrs = []  # Track Index[T] annotations
 
-        # Extract docstrings from class source code
-        docstrings = _extract_docstrings(cls)
-
-        # Resolve type hints with Col/Index injected into the namespace so
+        # Resolve type hints with Col injected into the namespace so
         # that ``from __future__ import annotations`` and TYPE_CHECKING-guarded
         # imports both work without NameError at runtime.
         module = sys.modules.get(cls.__module__)
         globalns = dict(vars(module)) if module else {}
-        localns: Dict[str, Any] = {"Col": Col, "Index": Index}
+        localns: Dict[str, Any] = {"Col": Col}
         hints = get_type_hints(cls, globalns=globalns, localns=localns)
-        index_entries: List[Dict[str, Any]] = []
 
         for attr_name, attr_type in hints.items():
             if attr_name.startswith("_"):
-                continue
-
-            # Collect Index[T] annotations (property injection deferred)
-            idx_origin = get_origin(attr_type)
-            if idx_origin is Index:
-                idx_inner = get_args(attr_type)[0] if get_args(attr_type) else None
-                index_entries.append({"name": attr_name, "inner_type": idx_inner})
                 continue
 
             # 1. Parse Type Hints (Handle Col[T] and Optional[Col[T]])
@@ -389,7 +321,6 @@ class BaseSchema:
                 "inner_type": inner_type,
                 "field_info": field_info,
                 "is_optional": is_optional,
-                "docstring": docstrings.get(attr_name),
             }
 
             # 3. Inject the safe Property wrapper
@@ -423,43 +354,6 @@ class BaseSchema:
                 return property(getter, setter)
 
             setattr(cls, attr_name, make_property(actual_df_col, is_optional))
-
-        # ------------------------------------------------------------------
-        # Inject Index properties (after all hints are collected)
-        # ------------------------------------------------------------------
-        cls._fr_index_attrs = index_entries
-
-        if len(index_entries) == 1:
-            # Single Index — property directly wraps self._fr_df.index
-            entry = index_entries[0]
-
-            def make_single_index_property() -> property:
-                def getter(self: "BaseSchema") -> Any:
-                    return self._fr_backend.get_index(self._fr_df)
-
-                def setter(self: "BaseSchema", value: Any) -> None:
-                    self._fr_df = self._fr_backend.set_index(self._fr_df, value)
-
-                return property(getter, setter)
-
-            setattr(cls, entry["name"], make_single_index_property())
-
-        elif len(index_entries) > 1:
-            # MultiIndex — each property accesses its own level
-            for entry in index_entries:
-
-                def make_multi_index_property(level_name: str) -> property:
-                    def getter(self: "BaseSchema") -> Any:
-                        return self._fr_backend.get_index_level(self._fr_df, level_name)
-
-                    def setter(self: "BaseSchema", value: Any) -> None:
-                        self._fr_df = self._fr_backend.set_index_level(
-                            self._fr_df, level_name, value
-                        )
-
-                    return property(getter, setter)
-
-                setattr(cls, entry["name"], make_multi_index_property(entry["name"]))
 
     # ------------------------------------------------------------------
     # Core Methods (Prefixed with fr_ to avoid namespace collisions)
@@ -525,11 +419,6 @@ class BaseSchema:
         """
         return self._fr_backend.num_rows(self._fr_df)
 
-    @property
-    def fr_backend(self) -> BackendAdapter:
-        """Access the backend adapter."""
-        return self._fr_backend
-
     # ------------------------------------------------------------------
     # Schema Introspection
     # ------------------------------------------------------------------
@@ -540,7 +429,7 @@ class BaseSchema:
 
         Returns:
             A list of dicts, one per column, with keys: attribute, column,
-            type, required, nullable, unique, constraints, description.
+            type, required, nullable, unique, constraints.
         """
         rows: List[Dict[str, Any]] = []
         for attr_name, meta in cls._fr_schema.items():
@@ -570,7 +459,6 @@ class BaseSchema:
                     "nullable": fi.nullable,
                     "unique": fi.unique,
                     "constraints": constraints or None,
-                    "description": meta.get("docstring"),
                 }
             )
         return rows
@@ -592,25 +480,8 @@ class BaseSchema:
             f"{head}"
         )
 
-    def __iter__(self) -> Any:
-        """Iterate over rows as named tuples."""
-        return self._fr_backend.itertuples(self._fr_df, self.__class__.__name__ + "Row")
-
     def __eq__(self, other: object) -> bool:
         """Check equality with another Schema of the same type."""
         if not isinstance(other, self.__class__):
             return NotImplemented
         return self._fr_backend.equals(self._fr_df, other._fr_df)
-
-    def __contains__(self, col_name: str) -> bool:
-        """Support ``'col_name' in obj`` syntax.
-
-        Checks both Python attribute names and raw DataFrame column names.
-        This ensures that with aliases, both work: 'tier' in users and
-        'customer_tier' in users.
-        """
-        # Check if it's a Python attribute name in the schema
-        if col_name in self._fr_schema:
-            return True
-        # Fall back to checking raw DataFrame column name
-        return self._fr_backend.has_column(self._fr_df, col_name)

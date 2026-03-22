@@ -83,33 +83,6 @@ if HAS_POLARS:
 class TestPandasBackendCoverage:
     """Tests to cover missing pandas backend lines."""
 
-    def test_to_dict_list_orient(self):
-        """Test to_dict with orient='list'."""
-        df = pd.DataFrame({"id": [1, 2], "name": ["a", "b"], "value": [1.0, 2.0]})
-        schema = SimpleSchema(df)
-        result = schema.fr_data.to_dict(orient="list")
-        assert result == {"id": [1, 2], "name": ["a", "b"], "value": [1.0, 2.0]}
-
-    def test_to_dict_dict_orient(self):
-        """Test to_dict with orient='dict'."""
-        df = pd.DataFrame({"id": [1, 2], "name": ["a", "b"], "value": [1.0, 2.0]})
-        schema = SimpleSchema(df)
-        result = schema.fr_data.to_dict(orient="dict")
-        # pandas orient='dict' returns {col: {index: value}} format
-        assert "id" in result
-        assert "name" in result
-        assert "value" in result
-        assert result["id"][0] == 1
-        assert result["name"][1] == "b"
-
-    def test_to_dict_records_orient(self):
-        """Test to_dict with orient='records' (default)."""
-        df = pd.DataFrame({"id": [1, 2], "name": ["a", "b"], "value": [1.0, 2.0]})
-        schema = SimpleSchema(df)
-        result = schema.fr_data.to_dict(orient="records")
-        assert len(result) == 2
-        assert result[0] == {"id": 1, "name": "a", "value": 1.0}
-
     def test_backend_equals_method(self):
         """Test backend equals comparison."""
         df1 = pd.DataFrame({"id": [1, 2], "name": ["a", "b"], "value": [1.0, 2.0]})
@@ -122,32 +95,6 @@ class TestPandasBackendCoverage:
         backend = PandasBackend()
         assert backend.equals(df1, df2)
         assert not backend.equals(df1, df3)
-
-    def test_filter_rows(self):
-        """Test filtering with native pandas methods."""
-        df = pd.DataFrame({"id": [1, 2, 3], "name": ["a", "b", "c"], "value": [1.0, 2.0, 3.0]})
-        schema = SimpleSchema(df)
-        filtered = schema.__class__(schema.fr_data[schema.value > 1.5], copy=False, validate=False)
-        assert len(filtered.fr_data) == 2
-        assert filtered.id.tolist() == [2, 3]
-
-    def test_multiindex_operations(self):
-        """Test MultiIndex operations via backend."""
-        df = pd.DataFrame({"id": [1, 2], "name": ["a", "b"], "value": [1.0, 2.0]})
-        df.index = pd.MultiIndex.from_arrays([[1, 2], ["x", "y"]], names=["idx1", "idx2"])
-
-        from frameright.backends.pandas_backend import PandasBackend
-
-        backend = PandasBackend()
-
-        # Get index level
-        level1 = backend.get_index_level(df, "idx1")
-        assert list(level1) == [1, 2]
-
-        # Set index level
-        df_modified = backend.set_index_level(df, "idx1", [10, 20])
-        result = df_modified.index.get_level_values("idx1")
-        assert list(result) == [10, 20]
 
     def test_constraint_violation_different_checks(self):
         """Test different constraint violations for coverage."""
@@ -200,29 +147,6 @@ class TestPandasBackendCoverage:
         with pytest.raises(MissingColumnError):
             ConstrainedSchema(df)
 
-    def test_empty_series_different_dtypes(self):
-        """Test empty_series generation with different dtypes."""
-        from frameright.backends.pandas_backend import PandasBackend
-
-        backend = PandasBackend()
-
-        int_series = backend.empty_series("int64")
-        assert len(int_series) == 0
-        assert int_series.dtype == "int64"
-
-        float_series = backend.empty_series("float64")
-        assert len(float_series) == 0
-        assert float_series.dtype == "float64"
-
-        str_series = backend.empty_series("str")
-        assert len(str_series) == 0
-        # pandas may use StringDtype or object depending on version
-        assert str(str_series.dtype) in ["object", "string", "str"]
-
-        bool_series = backend.empty_series("bool")
-        assert len(bool_series) == 0
-        assert bool_series.dtype == bool
-
 
 # =============================================================================
 # Polars Backend Coverage Tests
@@ -235,7 +159,9 @@ class TestPolarsBackendCoverage:
 
     def test_lazyframe_operations(self):
         """Test operations with LazyFrame."""
-        df = pl.DataFrame({"id": [1, 2, 3], "name": ["a", "b", "c"], "value": [1.0, 2.0, 3.0]})
+        df = pl.DataFrame(
+            {"id": [1, 2, 3], "name": ["a", "b", "c"], "value": [1.0, 2.0, 3.0]}
+        )
         lazy_df = df.lazy()
 
         # LazyFrame should be detected
@@ -255,36 +181,6 @@ class TestPolarsBackendCoverage:
         # Test num_cols with LazyFrame
         assert backend.num_cols(lazy_df) == 3
 
-    def test_to_dict_orientations(self):
-        """Test to_dict with different orient options."""
-        df = pl.DataFrame({"id": [1, 2], "name": ["a", "b"], "value": [1.0, 2.0]})
-        schema = SimpleSchemaPolars(df)
-
-        # Polars uses to_dicts() for list of records
-        result_records = schema.fr_data.to_dicts()
-        assert len(result_records) == 2
-        assert result_records[0] == {"id": 1, "name": "a", "value": 1.0}
-
-        # Polars uses to_dict(as_series=False) for dict of lists
-        result_dict = schema.fr_data.to_dict(as_series=False)
-        assert result_dict == {"id": [1, 2], "name": ["a", "b"], "value": [1.0, 2.0]}
-
-        # Same as dict for polars
-        result_list = schema.fr_data.to_dict(as_series=False)
-        assert result_list == {"id": [1, 2], "name": ["a", "b"], "value": [1.0, 2.0]}
-
-        # Test default behavior
-        result_default = schema.fr_data.to_dicts()
-        assert len(result_default) == 2
-
-    def test_lazyframe_to_dict(self):
-        """Test to_dict with LazyFrame."""
-        df = pl.DataFrame({"id": [1, 2], "name": ["a", "b"], "value": [1.0, 2.0]})
-        lazy_df = df.lazy()
-        schema = SimpleSchemaPolarsLazy(lazy_df)
-        result = schema.fr_data.collect().to_dicts()
-        assert len(result) == 2
-
     def test_lazyframe_backend_equals(self):
         """Test equals comparison with LazyFrame."""
         df1 = pl.DataFrame({"id": [1, 2], "name": ["a", "b"], "value": [1.0, 2.0]})
@@ -298,62 +194,6 @@ class TestPolarsBackendCoverage:
 
         backend = PolarsLazyBackend()
         assert backend.equals(lazy1, lazy2)
-
-    def test_empty_series_all_dtypes(self):
-        """Test empty_series with all dtype mappings."""
-        from frameright.backends.polars_eager_backend import PolarsEagerBackend
-
-        backend = PolarsEagerBackend()
-
-        int_series = backend.empty_series("int64")
-        assert len(int_series) == 0
-        assert int_series.dtype == pl.Int64
-
-        float_series = backend.empty_series("float64")
-        assert len(float_series) == 0
-        assert float_series.dtype == pl.Float64
-
-        str_series = backend.empty_series("str")
-        assert len(str_series) == 0
-        assert str_series.dtype == pl.Utf8
-
-        bool_series = backend.empty_series("bool")
-        assert len(bool_series) == 0
-        assert bool_series.dtype == pl.Boolean
-
-        # Unknown dtype defaults to Utf8
-        unknown_series = backend.empty_series("unknown")
-        assert len(unknown_series) == 0
-        assert unknown_series.dtype == pl.Utf8
-
-    def test_polars_index_operations(self):
-        """Test Polars index operations (which use column fallback)."""
-        df = pl.DataFrame({"id": [1, 2, 3], "name": ["a", "b", "c"], "value": [1.0, 2.0, 3.0]})
-
-        from frameright.backends.polars_eager_backend import PolarsEagerBackend
-
-        backend = PolarsEagerBackend()
-
-        # get_index returns a row-number series
-        index = backend.get_index(df)
-        assert len(index) == 3
-        assert list(index) == [0, 1, 2]
-
-        # set_index adds an _index column
-        df_with_index = backend.set_index(df, pl.Series("idx", [10, 20, 30]))
-        assert "_index" in df_with_index.columns
-
-        # index_nlevels always returns 1 for Polars
-        assert backend.index_nlevels(df) == 1
-
-        # get_index_level uses column fallback
-        df_with_col = df.with_columns(pl.lit("level_val").alias("my_level"))
-        level = backend.get_index_level(df_with_col, "my_level")
-        assert "level_val" in level.to_list()
-
-        # set_index_level sets a column
-        df_set_level = backend.set_index_level(df, "test_level", [100, 200, 300])
-        assert "test_level" in df_set_level.columns
 
     def test_polars_validation_errors(self):
         """Test Polars validation error paths."""
@@ -405,40 +245,6 @@ class TestPolarsBackendCoverage:
         with pytest.raises(ConstraintViolationError):
             ConstrainedSchemaPolars(df_range)
 
-    def test_polars_filter_rows(self):
-        """Test filter_rows for Polars."""
-        df = pl.DataFrame(
-            {
-                "id": [1, 2, 3, 4],
-                "name": ["a", "b", "c", "d"],
-                "value": [1.0, 2.0, 3.0, 4.0],
-            }
-        )
-        schema = SimpleSchemaPolars(df)
-
-        # Filter using boolean mask
-        filtered = schema.__class__(
-            schema.fr_data.filter(schema.value > 2.0),
-            copy=False,
-            validate=False,  # type: ignore[call-arg]
-        )
-        assert len(filtered.fr_data) == 2
-        assert filtered.id.to_list() == [3, 4]
-
-    def test_to_csv_lazyframe(self):
-        """Test to_csv with LazyFrame."""
-        df = pl.DataFrame({"id": [1, 2], "name": ["a", "b"], "value": [1.0, 2.0]})
-        lazy_df = df.lazy()
-        schema = SimpleSchemaPolarsLazy(lazy_df)
-
-        import os
-        import tempfile
-
-        with tempfile.TemporaryDirectory() as tmpdir:
-            path = os.path.join(tmpdir, "test.csv")
-            schema.fr_data.collect().write_csv(path)
-            assert os.path.exists(path)
-
 
 # =============================================================================
 # Import Coverage Tests
@@ -450,25 +256,22 @@ class TestImportCoverage:
 
     def test_pandas_typing_imports(self):
         """Test pandas typing imports are accessible."""
-        from frameright.typing.pandas import Col, Index
+        from frameright.typing.pandas import Col
 
         assert Col is not None
-        assert Index is not None
 
     def test_polars_typing_imports(self):
         """Test polars typing imports are accessible."""
         from frameright.typing.polars_eager import Col
 
         assert Col is not None
-        # Note: Polars doesn't have an Index concept, so we only import Col
 
     def test_generic_typing_imports(self):
         """Test generic typing imports."""
-        from frameright.typing import Col, Index
+        from frameright.typing import Col
 
-        # At runtime, Col and Index are generic classes
+        # At runtime, Col is a generic class
         assert Col is not None
-        assert Index is not None
 
 
 # =============================================================================
@@ -547,32 +350,6 @@ class TestCoercionAndEdgeCases:
         assert backend.has_column(lazy, "name")  # type: ignore[arg-type]
         assert not backend.has_column(lazy, "missing")  # type: ignore[arg-type]
 
-    @pytest.mark.skipif(not HAS_POLARS, reason="Polars not installed")
-    def test_polars_set_index_with_non_series(self):
-        """Test Polars set_index with non-Series values."""
-        df = pl.DataFrame({"id": [1, 2], "name": ["a", "b"]})
-
-        from frameright.backends.polars_eager_backend import PolarsEagerBackend
-
-        backend = PolarsEagerBackend()
-
-        # Set index with list (not Series)
-        df_indexed = backend.set_index(df, [10, 20])
-        assert "_index" in df_indexed.columns
-
-    @pytest.mark.skipif(not HAS_POLARS, reason="Polars not installed")
-    def test_polars_get_index_level_missing(self):
-        """Test Polars get_index_level with missing column."""
-        df = pl.DataFrame({"id": [1, 2], "name": ["a", "b"]})
-
-        from frameright.backends.narwhals_backend import NarwhalsBackend
-
-        backend = NarwhalsBackend()
-
-        # Try to get a non-existent index level
-        with pytest.raises(KeyError):
-            backend.get_index_level(df, "nonexistent_level")  # type: ignore[arg-type]
-
     def test_pandas_to_dict_index_orient(self):
         """Test pandas to_dict with index orient."""
         df = pd.DataFrame({"id": [1, 2], "name": ["a", "b"], "value": [1.0, 2.0]})
@@ -643,55 +420,6 @@ class TestCoercionAndEdgeCases:
         df_new = backend.set_column(df.copy(), "new_col", [10, 20])
         assert "new_col" in df_new.columns
         assert df_new["new_col"].tolist() == [10, 20]
-
-    def test_pandas_index_nlevels(self):
-        """Test pandas index_nlevels method."""
-
-        class SimpleSchema(StructFramePandas):
-            id: Col[int]
-            name: Col[str]
-
-        df = pd.DataFrame({"id": [1, 2], "name": ["a", "b"]})
-        schema = SimpleSchema(df)
-        # Access backend directly to test index_nlevels
-        backend = schema.fr_backend
-        nlevels = backend.index_nlevels(df)
-        assert nlevels == 1
-
-    @pytest.mark.skipif(not HAS_POLARS, reason="Polars not installed")
-    def test_polars_num_rows_lazyframe(self):
-        """Test num_rows with LazyFrame."""
-
-        class SimpleSchema(StructFramePolarsLazy):
-            id: Col[int]
-            name: Col[str]
-
-        df = pl.DataFrame({"id": [1, 2, 3], "name": ["a", "b", "c"]}).lazy()
-        # Create schema with lazy frame
-        schema = SimpleSchema(df, validate=False)
-        # Should collect and get height
-        backend = schema.fr_backend
-        nrows = backend.num_rows(df)
-        assert nrows == 3
-
-    @pytest.mark.skipif(not HAS_POLARS, reason="Polars not installed")
-    def test_polars_filter_series_mask_lazyframe(self):
-        """Test filtering LazyFrame with Series mask."""
-
-        class SimpleSchema(StructFramePolarsLazy):
-            id: Col[int]
-            value: Col[int]
-
-        df = pl.DataFrame({"id": [1, 2, 3], "value": [10, 20, 30]}).lazy()
-        schema = SimpleSchema(df, validate=False)
-
-        # Create a Series mask
-        mask = pl.Series([True, False, True])
-        # Filter through backend
-        backend = schema.fr_backend
-        filtered_df = backend.filter_rows(df, mask)
-        collected = filtered_df.collect()
-        assert len(collected) == 2
 
     @pytest.mark.skipif(not HAS_POLARS, reason="Polars not installed")
     def test_polars_coerce_with_errors_raise(self):
