@@ -46,7 +46,7 @@ class PandasBackend(BackendAdapter):
     # ------------------------------------------------------------------
 
     def copy(self, df: pd.DataFrame) -> pd.DataFrame:
-        return df.copy()  # type: ignore[no-any-return]
+        return df.copy()
 
     def get_column(self, df: pd.DataFrame, col: str) -> pd.Series:
         return df[col]
@@ -85,7 +85,9 @@ class PandasBackend(BackendAdapter):
     def get_index_level(self, df: pd.DataFrame, level_name: str) -> pd.Index:
         return df.index.get_level_values(level_name)
 
-    def set_index_level(self, df: pd.DataFrame, level_name: str, value: Any) -> pd.DataFrame:
+    def set_index_level(
+        self, df: pd.DataFrame, level_name: str, value: Any
+    ) -> pd.DataFrame:
         idx = df.index
         arrays = [
             value if idx.names[i] == level_name else idx.get_level_values(i)
@@ -109,7 +111,7 @@ class PandasBackend(BackendAdapter):
     # ------------------------------------------------------------------
 
     def head(self, df: pd.DataFrame, n: int = 5) -> pd.DataFrame:
-        return df.head(n)  # type: ignore[no-any-return]
+        return df.head(n)
 
     def itertuples(self, df: pd.DataFrame, name: str) -> Any:
         return df.itertuples(index=True, name=name)
@@ -222,8 +224,12 @@ class PandasBackend(BackendAdapter):
         # Check for missing columns first
         missing_mask = fc["check"] == "column_in_dataframe"
         if missing_mask.any():
-            missing_cols = sorted(fc.loc[missing_mask, "failure_case"].unique().tolist())
-            raise MissingColumnError(f"Missing required columns: {missing_cols}") from exc
+            missing_cols = sorted(
+                fc.loc[missing_mask, "failure_case"].unique().tolist()
+            )
+            raise MissingColumnError(
+                f"Missing required columns: {missing_cols}"
+            ) from exc
 
         # Check for extra columns (strict mode)
         extra_mask = fc["check"] == "column_in_schema"
@@ -240,7 +246,9 @@ class PandasBackend(BackendAdapter):
                     f"Column '{col_name}' is not defined in the schema (strict mode)"
                 ) from exc
             else:
-                raise ValidationError("Extra columns not allowed in strict mode") from exc
+                raise ValidationError(
+                    "Extra columns not allowed in strict mode"
+                ) from exc
 
         # Check for dtype mismatches
         dtype_mask = fc["check"].str.startswith("dtype(", na=False)
@@ -255,7 +263,9 @@ class PandasBackend(BackendAdapter):
             row = fc.iloc[0]
             col = row.get("column", "?")
             check = row.get("check", "?")
-            raise ConstraintViolationError(f"Column '{col}' failed check: {check}") from exc
+            raise ConstraintViolationError(
+                f"Column '{col}' failed check: {check}"
+            ) from exc
 
     def _translate_single_pandera_error(self, exc: Any) -> None:
         """Translate a single Pandera SchemaError into a Schema exception."""

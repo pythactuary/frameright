@@ -24,8 +24,8 @@ from frameright.typing import Col as _RuntimeCol
 from frameright.typing import Index as _RuntimeIndex
 
 # Re-export for convenience
-Col = _RuntimeCol
-Index = _RuntimeIndex
+Col = _RuntimeCol  # type: ignore[misc]
+Index = _RuntimeIndex  # type: ignore[misc]
 
 # ------------------------------------------------------------------
 # Concrete Backend-Specific Schema

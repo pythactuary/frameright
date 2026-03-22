@@ -13,5 +13,9 @@
         "source.organizeImports": "explicit"
     },
   },
-  "isort.args":["--profile", "black"],
+"isort.args": [
+    "--profile",
+    "black"
+],
+"makefile.configureOnOpen": false,
 }
