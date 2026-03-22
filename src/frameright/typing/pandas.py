@@ -13,7 +13,7 @@ At runtime ``Col`` is identical to the generic sentinel from
 from frameright.typing import Col as _RuntimeCol
 
 # Re-export the generic sentinel
-Col = _RuntimeCol
+Col = _RuntimeCol  # type: ignore[type-arg]
 
 
 __all__ = ["Col"]

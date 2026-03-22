@@ -45,7 +45,7 @@ class Schema(BaseSchema):
 
     def __init__(
         self,
-        df: "nw.DataFrame",
+        df: "nw.DataFrame",  # type: ignore[type-arg]
         copy: bool = False,
         validate: bool = True,
         validate_types: bool = True,
@@ -81,7 +81,7 @@ class Schema(BaseSchema):
     if TYPE_CHECKING:
 
         @property
-        def fr_data(self) -> "nw.DataFrame":
+        def fr_data(self) -> "nw.DataFrame":  # type: ignore[type-arg]
             """Return the underlying narwhals DataFrame."""
             ...
 

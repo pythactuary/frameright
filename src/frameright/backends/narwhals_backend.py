@@ -73,13 +73,14 @@ class NarwhalsBackend(BackendAdapter):
 
     def equals(self, df1: nw.DataFrame, df2: nw.DataFrame) -> bool:
         # Compare via native
-        return df1.to_native().equals(df2.to_native())
+        result: bool = df1.to_native().equals(df2.to_native())
+        return result
 
     # Pandera validation (narwhals wraps native, so validate the native)
     def build_pandera_schema(
         self,
         fr_schema: Dict[str, dict],
-        df: nw.DataFrame,
+        df: Any = None,
         check_types: bool = True,
         strict: bool = False,
     ) -> Any:
@@ -102,9 +103,9 @@ class NarwhalsBackend(BackendAdapter):
                 date: pl.Date,
             }
         else:
-            import pandera.pandas as pa
+            import pandera.pandas as pa  # type: ignore[no-redef]
 
-            dtype_map: Dict[type, Any] = {
+            dtype_map = {
                 int: int,
                 float: float,
                 str: str,
@@ -221,6 +222,8 @@ class NarwhalsBackend(BackendAdapter):
         df: nw.DataFrame,
         col: str,
         target_type: type,
+        errors: str = "raise",
+        nullable: bool = True,
     ) -> nw.DataFrame:
         """Coerce a column to target type using narwhals."""
         # Narwhals dtype mapping
@@ -235,7 +238,7 @@ class NarwhalsBackend(BackendAdapter):
         if target_dtype is None:
             return df
 
-        return df.with_columns(df[col].cast(target_dtype).alias(col))
+        return df.with_columns(df[col].cast(target_dtype).alias(col))  # type: ignore[arg-type]
 
     # Lazy evaluation
     def is_lazy(self, df: Any) -> bool:

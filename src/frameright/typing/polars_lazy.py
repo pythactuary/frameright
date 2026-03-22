@@ -31,7 +31,7 @@ T = TypeVar("T")
 if TYPE_CHECKING:
     import polars as pl
 
-    class ColTemp(Generic[T], pl.Expr):  # type: ignore[misc]
+    class ColTemp(Generic[T], pl.Expr):
         """Polars Expr type for Schema lazy schemas."""
 
         ...

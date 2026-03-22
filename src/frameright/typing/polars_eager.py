@@ -27,7 +27,7 @@ T = TypeVar("T")
 if TYPE_CHECKING:
     import polars as pl
 
-    class ColTemp(Generic[T], pl.Series):  # type: ignore[misc]
+    class ColTemp(Generic[T], pl.Series):
         """Polars Series type for Schema eager schemas."""
 
         ...

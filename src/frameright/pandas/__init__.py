@@ -23,7 +23,7 @@ from frameright.core import BaseSchema, Field
 from frameright.typing import Col as _RuntimeCol
 
 # Re-export for convenience
-Col = _RuntimeCol  # type: ignore[misc]
+Col = _RuntimeCol  # type: ignore[type-arg]
 
 # ------------------------------------------------------------------
 # Concrete Backend-Specific Schema

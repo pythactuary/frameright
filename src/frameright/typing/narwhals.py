@@ -26,12 +26,12 @@ if TYPE_CHECKING:
 
     # Type checkers see narwhals Series; narwhals is not fully generic upstream,
     # so the inner type T is best-effort today.
-    class ColTemp(nw.Series, Generic[T]):
+    class ColTemp(nw.Series, Generic[T]):  # type: ignore[type-arg]
         """Narwhals column with schema-level inner type *T* (best-effort in type checkers)."""
 
         ...
 
-    Col = ColTemp[T] | nw.Series
+    Col = ColTemp[T] | nw.Series  # type: ignore[type-arg]
 
     # Narwhals doesn't have Index, use pandas as fallback for type checking
 

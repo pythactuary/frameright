@@ -45,7 +45,7 @@ class Schema(BaseSchema):
 
     def __init__(
         self,
-        df: "nw.LazyFrame",
+        df: "nw.LazyFrame",  # type: ignore[type-arg]
         copy: bool = False,
         validate: bool = True,
         validate_types: bool = True,
@@ -81,7 +81,7 @@ class Schema(BaseSchema):
     if TYPE_CHECKING:
 
         @property
-        def fr_data(self) -> "nw.LazyFrame":
+        def fr_data(self) -> "nw.LazyFrame":  # type: ignore[type-arg]
             """Return the underlying narwhals LazyFrame."""
             ...
 
