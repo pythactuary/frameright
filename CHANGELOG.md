@@ -1,6 +1,6 @@
 # Changelog
 
-All notable changes to ProteusFrame will be documented in this file.
+All notable changes to Schema will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
@@ -10,18 +10,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - **Python 3.9+ support**: Extended compatibility from Python 3.12+ to Python 3.9+ by conditionally importing `TypeAlias` from `typing_extensions`
+- **Explicit eager/lazy imports**: Added dedicated modules for explicit backend selection:
+  - `frameright.polars.eager` - for `pl.DataFrame` → `pl.Series`
+  - `frameright.polars.lazy` - for `pl.LazyFrame` → `pl.Expr`
+  - `frameright.narwhals.eager` - for `nw.DataFrame` → `nw.Series`
+  - `frameright.narwhals.lazy` - for `nw.LazyFrame` → `nw.Expr`
 
 ### Changed
 
 #### Backend Selection Simplification
 
-- **Backend-specific classes (recommended)**: Added `ProteusFramePandas`, `ProteusFramePolars`, `ProteusFramePolarsLazy`, `ProteusFrameNarwhals`, and `ProteusFrameNarwhalsLazy` as explicit backend classes for better type safety
-- **Pandas default**: Base `ProteusFrame` class now defaults to pandas backend for backward compatibility (previously required explicit backend parameter or auto-detection)
-- **Explicit over implicit**: Users can choose between:
-  - Backend-specific classes (e.g., `class Sales(ProteusFramePandas)`) for strongest type guarantees
-  - Base `ProteusFrame` with optional `backend` parameter (e.g., `Sales(df, backend="polars")`)
-  - Base `ProteusFrame` with no parameter (defaults to pandas)
-- **Type system improvements**: Removed `Generic[T]` from base class, simplified type inference, fewer type checkers issues
+- **Explicit module imports (recommended)**: Import `Schema` and `Col` from backend-specific modules:
+  - `from frameright.pandas import Schema, Col, Field` for pandas
+  - `from frameright.polars.eager import Schema, Col, Field` for polars DataFrames
+  - `from frameright.polars.lazy import Schema, Col, Field` for polars LazyFrames
+  - `from frameright.narwhals.eager import Schema, Col, Field` for narwhals DataFrames
+- **Backward compatibility**: Old import patterns still work via re-exports
+- **Type system improvements**: Removed `None` from TypeVar bounds in `Col[T]` to fix type checker errors
+- **Better type safety**: `Col` types now match actual return types (Series vs Expr) for eager vs lazy evaluation
 
 ## [0.3.0] - 2026-03-06
 
@@ -30,29 +36,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 #### Multi-Backend Architecture
 
 - **Backend adapter pattern**: Abstract `BackendAdapter` ABC with pluggable implementations for Pandas, Polars, and future backends (cuDF, etc.)
-- **Auto-detection**: Automatically detects DataFrame type and loads the appropriate backend
-- **Registry system**: `register_backend()` allows third-party backends to be registered without modifying ProteusFrame source
-- **Backend selection**: Explicit `backend=` parameter in constructors and factory methods
+- **Explicit module imports**: Each backend module provides its own Schema class with hardcoded backend adapter
+- **Backend selection**: Import from the appropriate module (e.g., `frameright.pandas`, `frameright.polars.eager`)
 
 #### Polars Support
 
 - **Full Polars backend**: Complete implementation supporting both eager `pl.DataFrame` and lazy `pl.LazyFrame`
 - **Lazy expression properties**: Property getters return `pl.col()` expressions instead of materialized Series, preserving the Polars query optimizer
 - **Expression-aware setters**: `set_column()` handles `pl.Expr`, `pl.Series`, and scalar values via `with_columns()`
-- **LazyFrame transparency**: All ProteusFrame operations (`filter`, `to_dict`, `to_csv`, `validate`) work seamlessly on LazyFrames
+- **LazyFrame transparency**: All Schema operations (`filter`, `to_dict`, `to_csv`, `validate`) work seamlessly on LazyFrames
 - **LazyFrame materialisation**: Escape hatch to materialize LazyFrames when needed
 
 #### Backend-Specific Typing
 
-- **`proteusframe.typing.pandas`**: Pandas-specific `Col[T]` → `pd.Series[T]` for perfect IDE autocomplete
-- **`proteusframe.typing.polars`**: Polars-specific `Col[T]` as `class Col(pl.Expr, Generic[T])` — preserves inner type `T` while giving Polars expression method autocomplete
-- **Generic fallback**: Default `proteusframe.typing` works for any backend
+- **`Schema.typing.pandas`**: Pandas-specific `Col[T]` → `pd.Series[T]` for perfect IDE autocomplete
+- **`Schema.typing.polars`**: Polars-specific `Col[T]` as `class Col(pl.Expr, Generic[T])` — preserves inner type `T` while giving Polars expression method autocomplete
+- **Generic fallback**: Default `Schema.typing` works for any backend
 
 #### Validation with Pandera
 
 - **Pandera integration**: Replaced custom validation with Pandera's battle-tested validators
 - **Backend-aware schemas**: Uses `pandera.pandas` for Pandas, `pandera.polars` for Polars
-- **Error translation**: Pandera exceptions automatically translated to ProteusFrame exception types (`MissingColumnError`, `TypeMismatchError`, `ConstraintViolationError`)
+- **Error translation**: Pandera exceptions automatically translated to Schema exception types (`MissingColumnError`, `TypeMismatchError`, `ConstraintViolationError`)
 
 #### Python 3.9+ Compatibility
 
@@ -103,6 +108,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Runtime validation
 - IDE autocomplete via `Col[T]` type hints
 
-[0.3.0]: https://github.com/yourusername/proteusframe/compare/v0.2.0...v0.3.0
-[0.2.0]: https://github.com/yourusername/proteusframe/compare/v0.1.0...v0.2.0
-[0.1.0]: https://github.com/yourusername/proteusframe/releases/tag/v0.1.0
+[0.3.0]: https://github.com/yourusername/Schema/compare/v0.2.0...v0.3.0
+[0.2.0]: https://github.com/yourusername/Schema/compare/v0.1.0...v0.2.0
+[0.1.0]: https://github.com/yourusername/Schema/releases/tag/v0.1.0
