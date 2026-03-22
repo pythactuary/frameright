@@ -6,7 +6,7 @@ build-backend = "setuptools.build_meta"
 name = "frameright"
 version = "0.3.0"
 authors = [
-  { name="Your Name", email="your.email@example.com" },
+  { name="James Norman", email="james.norman@proteusllp.com" },
 ]
 description = "A lightweight Object-DataFrame Mapper (ODM) with runtime validation, multi-backend support (Pandas, Polars), and static type checking."
 readme = "README.md"
@@ -58,10 +58,10 @@ docs = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/yourusername/frameright"
+Homepage = "https://github.com/pythactuary/frameright"
 Documentation = "https://frameright.readthedocs.io"
-Repository = "https://github.com/yourusername/frameright"
-"Bug Tracker" = "https://github.com/yourusername/frameright/issues"
+Repository = "https://github.com/pythactuary/frameright"
+"Bug Tracker" = "https://github.com/pythactuary/frameright/issues"
 
 [tool.setuptools]
 package-dir = {"" = "src"}

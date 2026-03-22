@@ -5,10 +5,10 @@ import sys
 
 sys.path.insert(0, os.path.abspath("../../src"))
 
-project = "Schema"
+project = "FrameRight"
 copyright = "2026"
-author = "Your Name"
-release = "0.1.0"
+author = "James Norman"
+release = "0.3.0"
 
 extensions = [
     "sphinx.ext.autodoc",
