@@ -30,8 +30,5 @@ jobs:
     - name: Run tests
       run: pytest --tb=short -q
 
-    - name: Type checking
-      run: mypy src/frameright
-
-    - name: Linting
-      run: ruff check src/frameright
+    - name: Lint and type check
+      run: make lint

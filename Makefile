@@ -40,6 +40,7 @@ install:
 	pip install -e ".[dev,polars]"
 
 lint:
+	mypy src/frameright
 	pyright src/frameright
 	ruff check src/ tests/
 
