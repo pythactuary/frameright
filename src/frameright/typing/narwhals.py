@@ -15,7 +15,7 @@ Use these when working with narwhals DataFrames for backend-agnostic code::
     frame.col_a  # Returns nw.Series, IDE shows narwhals methods
 """
 
-from typing import TYPE_CHECKING, Generic, TypeVar
+from typing import TYPE_CHECKING, Generic, TypeVar, Union
 
 from frameright.typing import Col as _RuntimeCol
 
@@ -31,7 +31,7 @@ if TYPE_CHECKING:
 
         ...
 
-    Col = ColTemp[T] | nw.Series  # type: ignore[type-arg]
+    Col = Union[ColTemp[T], nw.Series]  # type: ignore[type-arg]
 
     # Narwhals doesn't have Index, use pandas as fallback for type checking
 

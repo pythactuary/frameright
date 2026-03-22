@@ -22,7 +22,7 @@ At runtime ``Col`` is identical to the generic sentinel from
 For **DataFrame** (eager) support, use ``polars_eager`` instead.
 """
 
-from typing import TYPE_CHECKING, Generic, TypeVar
+from typing import TYPE_CHECKING, Generic, TypeVar, Union
 
 from frameright.typing import Col as _RuntimeCol
 
@@ -36,9 +36,9 @@ if TYPE_CHECKING:
 
         ...
 
-    Col = (
-        ColTemp[T] | pl.Expr
-    )  # polars expressions can be untyped, so we allow Col[T] or plain pl.Expr
+    Col = Union[
+        ColTemp[T], pl.Expr
+    ]  # polars expressions can be untyped, so we allow Col[T] or plain pl.Expr
 
 else:
     Col = _RuntimeCol
